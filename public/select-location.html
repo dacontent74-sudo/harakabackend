@@ -214,11 +214,13 @@
                 📍 Select Your Location
             </div>
             <div class="card-text">
-                Please select your exact delivery location on the map below. You can:
-                <ul style="margin-left: 20px; margin-top: 8px;">
-                    <li>Tap anywhere on the map</li>
-                    <li>Drag the marker to adjust</li>
-                    <li>Use the GPS button for your current location</li>
+                <strong style="color: #FF6B00;">📍 We're auto-detecting your current location!</strong>
+                <p style="margin-top: 8px; font-size: 13px;">
+                    Once detected, just click "Confirm" below. You can also:
+                </p>
+                <ul style="margin-left: 20px; margin-top: 4px; font-size: 13px;">
+                    <li>Drag the marker if you need to adjust</li>
+                    <li>Tap anywhere on the map to move it</li>
                 </ul>
             </div>
 
@@ -297,21 +299,51 @@
                 position: selectedLocation,
                 map: map,
                 draggable: true,
-                title: 'Delivery Location'
+                title: 'Your Delivery Location'
             });
 
-            // Get current location
+            // Auto-detect current location (PRIMARY method)
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(position => {
-                    const pos = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    selectedLocation = pos;
-                    map.setCenter(pos);
-                    marker.setPosition(pos);
-                    updateLocationInfo(pos);
-                });
+                // Show loading while getting GPS
+                document.getElementById('selectedAddress').innerHTML =
+                    '<span style="color: #FF6B00;">📍 Detecting your location...</span>';
+                document.getElementById('locationInfo').style.display = 'block';
+
+                navigator.geolocation.getCurrentPosition(
+                    // Success - GPS found!
+                    (position) => {
+                        const pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        selectedLocation = pos;
+                        map.setCenter(pos);
+                        map.setZoom(16); // Zoom in to user's location
+                        marker.setPosition(pos);
+                        updateLocationInfo(pos);
+
+                        // Auto-enable confirm button
+                        document.getElementById('confirmBtn').disabled = false;
+
+                        // Show success message
+                        alert('✅ Your location detected! You can adjust the marker if needed, or just click "Confirm My Location".');
+                    },
+                    // Error - GPS failed
+                    (error) => {
+                        console.error('GPS error:', error);
+                        document.getElementById('selectedAddress').innerHTML =
+                            '<span style="color: red;">⚠️ Could not detect location. Please tap on the map or drag the marker.</span>';
+                        alert('Please enable location access or manually select your location on the map.');
+                    },
+                    // Options
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                alert('GPS not available. Please select your location manually on the map.');
             }
 
             // Map click handler
