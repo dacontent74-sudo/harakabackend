@@ -337,7 +337,7 @@
         // Load order details
         async function loadOrderDetails() {
             try {
-                const response = await fetch(`http://192.168.1.68:3000/api/v1/orders/${orderId}`);
+                const response = await fetch(`https://harakabackend.onrender.com/api/v1/orders/${orderId}`);
                 const result = await response.json();
 
                 if (result.success && result.data) {
@@ -369,7 +369,7 @@
             confirmBtn.innerHTML = '<div class="loader"></div> Confirming...';
 
             try {
-                const response = await fetch(`http://192.168.1.68:3000/api/v1/orders/${orderId}/delivery-location`, {
+                const response = await fetch(`https://harakabackend.onrender.com/api/v1/orders/${orderId}/delivery-location`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
