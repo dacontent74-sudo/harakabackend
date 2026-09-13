@@ -60,6 +60,16 @@ export class Order {
   @Column({ nullable: true })
   shareableLink: string;
 
+  // Food Order Fields
+  @Column({ type: 'json', nullable: true })
+  items: any; // Cart items for food orders
+
+  @Column({ nullable: true })
+  notes: string; // Delivery notes
+
+  @Column({ nullable: true })
+  paymentMethod: string; // Payment method chosen
+
   @CreateDateColumn()
   createdAt: Date;
 
