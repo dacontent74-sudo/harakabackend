@@ -73,7 +73,7 @@ export class OrdersService {
     console.log('📏 Calculated distance:', distance);
 
     // Calculate pricing
-    const pricing = this.pricingService.calculateDeliveryFee(distance, order.vehicleType);
+    const pricing = this.pricingService.calculateDeliveryFee(distance, order.vehicleType as 'motorcycle' | 'car');
 
     console.log('💰 Calculated pricing:', JSON.stringify(pricing, null, 2));
 
