@@ -54,6 +54,10 @@ export class OrdersService {
       throw new Error('Order not found');
     }
 
+    console.log('📍 Updating delivery location for order:', orderId);
+    console.log('📦 Order before update:', JSON.stringify(order, null, 2));
+    console.log('📥 Delivery location data:', JSON.stringify(dto, null, 2));
+
     // Calculate distance
     const distance = this.calculateDistance(
       order.pickupLatitude,
@@ -62,8 +66,12 @@ export class OrdersService {
       dto.deliveryLongitude,
     );
 
+    console.log('📏 Calculated distance:', distance);
+
     // Calculate pricing
     const pricing = this.pricingService.calculateDeliveryFee(distance, order.vehicleType);
+
+    console.log('💰 Calculated pricing:', JSON.stringify(pricing, null, 2));
 
     // Update order
     order.deliveryLatitude = dto.deliveryLatitude;
@@ -75,6 +83,9 @@ export class OrdersService {
     order.updatedAt = new Date().toISOString();
 
     this.orders.set(orderId, order);
+
+    console.log('✅ Order after update:', JSON.stringify(order, null, 2));
+
     return order;
   }
 
