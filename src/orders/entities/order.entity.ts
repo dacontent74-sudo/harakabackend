@@ -61,6 +61,12 @@ export class Order {
   shareableLink: string;
 
   // Food Order Fields
+  @Column({ nullable: true })
+  restaurant: string; // Restaurant name for food orders
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  total: number; // Top-level total amount
+
   @Column({ type: 'json', nullable: true })
   items: any; // Cart items for food orders
 

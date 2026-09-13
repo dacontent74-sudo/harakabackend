@@ -83,6 +83,7 @@ export class OrdersService {
     order.deliveryAddress = dto.deliveryAddress;
     order.distance = distance;
     order.pricing = pricing;
+    order.total = pricing.total; // Save top-level total for easy access
     order.status = 'ready_for_confirmation';
 
     const updatedOrder = await this.orderRepository.save(order);
