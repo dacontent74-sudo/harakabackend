@@ -1,13 +1,18 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PricingService } from '../pricing/pricing.service';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
+import { Order } from './entities/order.entity';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly pricingService: PricingService) {}
-
-  private orders = new Map<string, any>();
+  constructor(
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    private readonly pricingService: PricingService,
+  ) {}
 
   // Generate unique order ID
   private generateOrderId(): string {
@@ -25,48 +30,36 @@ export class OrdersService {
   }
 
   // Create pending order (waiting for recipient location)
-  createPendingOrder(dto: CreatePendingOrderDto) {
+  async createPendingOrder(dto: CreatePendingOrderDto) {
     const orderId = this.generateOrderId();
 
     console.log('📦 Creating pending order');
     console.log('📥 Received DTO:', JSON.stringify(dto, null, 2));
-    console.log('📋 DTO keys:', Object.keys(dto));
 
-    const order = {
+    const order = this.orderRepository.create({
       id: orderId,
       ...dto,
       status: 'awaiting_recipient_location',
-      deliveryLatitude: null,
-      deliveryLongitude: null,
-      deliveryAddress: null,
-      distance: null,
-      pricing: null,
       shareableLink: `https://harakabackend.onrender.com/select-location/${orderId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    });
 
-    console.log('💾 Order to be stored:', JSON.stringify(order, null, 2));
-    console.log('🔑 Order keys:', Object.keys(order));
+    const savedOrder = await this.orderRepository.save(order);
 
-    this.orders.set(orderId, order);
+    console.log('✅ Order saved to database');
+    console.log('🔍 Saved order:', JSON.stringify(savedOrder, null, 2));
 
-    console.log('✅ Order stored in Map');
-    console.log('🔍 Retrieved order:', JSON.stringify(this.orders.get(orderId), null, 2));
-
-    return order;
+    return savedOrder;
   }
 
   // Update delivery location (when recipient selects their location)
-  updateDeliveryLocation(orderId: string, dto: UpdateDeliveryLocationDto) {
-    const order = this.orders.get(orderId);
+  async updateDeliveryLocation(orderId: string, dto: UpdateDeliveryLocationDto) {
+    const order = await this.orderRepository.findOne({ where: { id: orderId } });
 
     if (!order) {
       throw new Error('Order not found');
     }
 
     console.log('📍 Updating delivery location for order:', orderId);
-    console.log('📦 Order before update:', JSON.stringify(order, null, 2));
     console.log('📥 Delivery location data:', JSON.stringify(dto, null, 2));
 
     // Calculate distance
@@ -91,33 +84,32 @@ export class OrdersService {
     order.distance = distance;
     order.pricing = pricing;
     order.status = 'ready_for_confirmation';
-    order.updatedAt = new Date().toISOString();
 
-    this.orders.set(orderId, order);
+    const updatedOrder = await this.orderRepository.save(order);
 
-    console.log('✅ Order after update:', JSON.stringify(order, null, 2));
+    console.log('✅ Order updated in database');
 
-    return order;
+    return updatedOrder;
   }
 
-  createOrder(orderData: any) {
+  async createOrder(orderData: any) {
     const orderId = this.generateOrderId();
-    const order = {
+    const order = this.orderRepository.create({
       id: orderId,
       ...orderData,
       status: 'confirmed',
-      createdAt: new Date().toISOString(),
-    };
+    });
 
-    this.orders.set(orderId, order);
-    return order;
+    return await this.orderRepository.save(order);
   }
 
-  getOrderById(id: string) {
-    return this.orders.get(id);
+  async getOrderById(id: string) {
+    return await this.orderRepository.findOne({ where: { id } });
   }
 
-  getAllOrders() {
-    return Array.from(this.orders.values());
+  async getAllOrders() {
+    return await this.orderRepository.find({
+      order: { createdAt: 'DESC' }, // Newest first
+    });
   }
 }

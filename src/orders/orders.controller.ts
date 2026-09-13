@@ -9,11 +9,11 @@ export class OrdersController {
 
   // Create pending order (sender fills their info, system sends link to recipient)
   @Post('pending')
-  createPendingOrder(@Body() dto: CreatePendingOrderDto) {
+  async createPendingOrder(@Body() dto: CreatePendingOrderDto) {
     console.log('🎯 Controller received POST /orders/pending');
     console.log('📨 Request body:', JSON.stringify(dto, null, 2));
 
-    const order = this.ordersService.createPendingOrder(dto);
+    const order = await this.ordersService.createPendingOrder(dto);
 
     console.log('📤 Controller returning:', JSON.stringify(order, null, 2));
 
@@ -26,12 +26,12 @@ export class OrdersController {
 
   // Update delivery location (recipient clicks link and selects location)
   @Put(':id/delivery-location')
-  updateDeliveryLocation(
+  async updateDeliveryLocation(
     @Param('id') id: string,
     @Body() dto: UpdateDeliveryLocationDto,
   ) {
     try {
-      const order = this.ordersService.updateDeliveryLocation(id, dto);
+      const order = await this.ordersService.updateDeliveryLocation(id, dto);
       return {
         success: true,
         message: 'Delivery location updated successfully',
@@ -47,8 +47,8 @@ export class OrdersController {
 
   // Confirm order (after recipient selects location and sender confirms)
   @Post()
-  createOrder(@Body() orderData: any) {
-    const order = this.ordersService.createOrder(orderData);
+  async createOrder(@Body() orderData: any) {
+    const order = await this.ordersService.createOrder(orderData);
     return {
       success: true,
       message: 'Order created successfully',
@@ -57,8 +57,8 @@ export class OrdersController {
   }
 
   @Get(':id')
-  getOrder(@Param('id') id: string) {
-    const order = this.ordersService.getOrderById(id);
+  async getOrder(@Param('id') id: string) {
+    const order = await this.ordersService.getOrderById(id);
     return {
       success: true,
       data: order,
@@ -66,10 +66,11 @@ export class OrdersController {
   }
 
   @Get()
-  getAllOrders() {
+  async getAllOrders() {
+    const orders = await this.ordersService.getAllOrders();
     return {
       success: true,
-      data: this.ordersService.getAllOrders(),
+      data: orders,
     };
   }
 }
