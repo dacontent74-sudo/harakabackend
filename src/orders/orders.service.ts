@@ -37,7 +37,7 @@ export class OrdersService {
       deliveryAddress: null,
       distance: null,
       pricing: null,
-      shareableLink: `http://192.168.1.68:3000/select-location/${orderId}`,
+      shareableLink: `https://harakabackend.onrender.com/select-location/${orderId}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
