@@ -10,7 +10,13 @@ export class OrdersController {
   // Create pending order (sender fills their info, system sends link to recipient)
   @Post('pending')
   createPendingOrder(@Body() dto: CreatePendingOrderDto) {
+    console.log('🎯 Controller received POST /orders/pending');
+    console.log('📨 Request body:', JSON.stringify(dto, null, 2));
+
     const order = this.ordersService.createPendingOrder(dto);
+
+    console.log('📤 Controller returning:', JSON.stringify(order, null, 2));
+
     return {
       success: true,
       message: 'Order created. Share link with recipient to select delivery location.',

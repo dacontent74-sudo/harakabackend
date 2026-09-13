@@ -28,6 +28,10 @@ export class OrdersService {
   createPendingOrder(dto: CreatePendingOrderDto) {
     const orderId = this.generateOrderId();
 
+    console.log('📦 Creating pending order');
+    console.log('📥 Received DTO:', JSON.stringify(dto, null, 2));
+    console.log('📋 DTO keys:', Object.keys(dto));
+
     const order = {
       id: orderId,
       ...dto,
@@ -42,7 +46,14 @@ export class OrdersService {
       updatedAt: new Date().toISOString(),
     };
 
+    console.log('💾 Order to be stored:', JSON.stringify(order, null, 2));
+    console.log('🔑 Order keys:', Object.keys(order));
+
     this.orders.set(orderId, order);
+
+    console.log('✅ Order stored in Map');
+    console.log('🔍 Retrieved order:', JSON.stringify(this.orders.get(orderId), null, 2));
+
     return order;
   }
 
