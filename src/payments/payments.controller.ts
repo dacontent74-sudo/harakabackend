@@ -58,41 +58,29 @@ export class PaymentsController {
   }
 
   /**
-   * Check payment status
+   * Check payment status (used for polling)
    */
   @Get('status/:depositId')
   async checkStatus(@Param('depositId') depositId: string) {
-    return await this.paymentsService.checkDepositStatus(depositId);
-  }
+    const result = await this.paymentsService.checkDepositStatus(depositId);
 
-  /**
-   * Webhook endpoint for PawaPay callbacks
-   */
-  @Post('callback')
-  async handleCallback(@Body() payload: any) {
-    this.logger.log('📥 PawaPay callback received:', JSON.stringify(payload, null, 2));
+    // If payment completed, update order
+    if (result.success && result.status === 'COMPLETED') {
+      const orderId = depositId.split('-')[0];
+      const order = await this.ordersService.getOrderById(orderId);
 
-    const depositId = payload.depositId;
-    const status = payload.status;
-
-    // Extract order ID from deposit ID (format: orderId-timestamp)
-    const orderId = depositId.split('-')[0];
-
-    // Update order payment status
-    const order = await this.ordersService.getOrderById(orderId);
-    if (order) {
-      if (status === 'COMPLETED') {
+      if (order && order.paymentStatus !== 'paid') {
         order.paymentStatus = 'paid';
         order.status = 'confirmed';
+        await this.ordersService.updateOrder(order);
         this.logger.log(`✅ Payment confirmed for order ${orderId}`);
-      } else if (status === 'FAILED') {
-        order.paymentStatus = 'failed';
-        this.logger.log(`❌ Payment failed for order ${orderId}`);
       }
-
-      await this.ordersService.updateOrder(order);
     }
 
-    return { success: true };
+    return result;
   }
+
+  // Note: We use polling instead of webhooks since PawaPay callback
+  // is shared with africa-cyber-trust app at:
+  // https://africa-cyber-trust.onrender.com/api/payments/webhooks/pawapay
 }
