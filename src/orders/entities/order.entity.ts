@@ -76,6 +76,12 @@ export class Order {
   @Column({ nullable: true })
   paymentMethod: string; // Payment method chosen
 
+  @Column({ nullable: true })
+  paymentStatus: string; // pending, paid, failed
+
+  @Column({ nullable: true })
+  depositId: string; // PawaPay deposit ID
+
   @CreateDateColumn()
   createdAt: Date;
 

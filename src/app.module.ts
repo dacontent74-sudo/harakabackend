@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PricingModule } from './pricing/pricing.module';
 import { MerchantsModule } from './merchants/merchants.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 import { AppController } from './app.controller';
 import { Order } from './orders/entities/order.entity';
 
@@ -22,6 +23,7 @@ import { Order } from './orders/entities/order.entity';
     PricingModule,
     MerchantsModule,
     OrdersModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
 })

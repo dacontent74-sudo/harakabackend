@@ -113,4 +113,8 @@ export class OrdersService {
       order: { createdAt: 'DESC' }, // Newest first
     });
   }
+
+  async updateOrder(order: any) {
+    return await this.orderRepository.save(order);
+  }
 }
