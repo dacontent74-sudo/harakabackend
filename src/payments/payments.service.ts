@@ -22,9 +22,14 @@ export class PaymentsService {
       // Determine correspondent based on phone number prefix
       const correspondent = this.getCorrespondent(data.phoneNumber);
 
+      // Parse amount (comes as string from database)
+      const amountNumber = typeof data.amount === 'string'
+        ? parseFloat(data.amount)
+        : data.amount;
+
       const payload = {
         depositId,
-        amount: data.amount.toFixed(2),
+        amount: amountNumber.toFixed(2),
         currency: 'RWF',
         correspondent,
         payer: {
