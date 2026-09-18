@@ -20,10 +20,12 @@ export class PaymentsController {
     phoneNumber: string;
   }) {
     this.logger.log(`💳 Payment initiation for order: ${dto.orderId}`);
+    this.logger.log(`📱 Phone number received: ${dto.phoneNumber}`);
 
     // Get order details
     const order = await this.ordersService.getOrderById(dto.orderId);
     if (!order) {
+      this.logger.error(`❌ Order not found: ${dto.orderId}`);
       return {
         success: false,
         message: 'Order not found',
@@ -32,7 +34,10 @@ export class PaymentsController {
 
     // Get amount from order
     const amount = order.total || order.pricing?.total || 0;
+    this.logger.log(`💰 Order amount: ${amount} RWF`);
+
     if (amount <= 0) {
+      this.logger.error(`❌ Invalid amount: ${amount}`);
       return {
         success: false,
         message: 'Invalid order amount',
@@ -47,11 +52,16 @@ export class PaymentsController {
       description: `Payment for Order ${dto.orderId}`,
     });
 
+    this.logger.log(`📊 PawaPay result:`, JSON.stringify(result, null, 2));
+
     // Update order with payment info
     if (result.success) {
       order.paymentStatus = 'pending';
       order.depositId = result.depositId;
       await this.ordersService.updateOrder(order);
+      this.logger.log(`✅ Order updated with payment info`);
+    } else {
+      this.logger.error(`❌ Payment failed:`, result.error);
     }
 
     return result;
@@ -76,6 +86,25 @@ export class PaymentsController {
         this.logger.log(`✅ Payment confirmed for order ${orderId}`);
       }
     }
+
+    return result;
+  }
+
+  /**
+   * Debug endpoint to check payment payload without sending
+   */
+  @Post('debug')
+  async debugPayment(@Body() dto: {
+    phoneNumber: string;
+    amount: number;
+  }) {
+    const testOrderId = 'TEST-' + Date.now();
+    const result = await this.paymentsService.debugPayload({
+      orderId: testOrderId,
+      amount: dto.amount,
+      phoneNumber: dto.phoneNumber,
+      description: `Test Payment`,
+    });
 
     return result;
   }

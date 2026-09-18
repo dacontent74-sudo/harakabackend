@@ -129,6 +129,51 @@ export class PaymentsService {
   }
 
   /**
+   * Debug method to show payload without sending
+   */
+  async debugPayload(data: {
+    orderId: string;
+    amount: number;
+    phoneNumber: string;
+    description: string;
+  }) {
+    const depositId = `${data.orderId}-${Date.now()}`;
+    const correspondent = this.getCorrespondent(data.phoneNumber);
+    const amountNumber = typeof data.amount === 'string'
+      ? parseFloat(data.amount)
+      : data.amount;
+
+    const payload = {
+      depositId,
+      amount: amountNumber.toFixed(2),
+      currency: 'RWF',
+      correspondent,
+      payer: {
+        type: 'MSISDN',
+        address: {
+          value: data.phoneNumber.replace(/^0/, '250'),
+        },
+      },
+      customerTimestamp: new Date().toISOString(),
+      statementDescription: data.description,
+    };
+
+    return {
+      success: true,
+      message: 'This is what will be sent to PawaPay:',
+      payload,
+      phoneNumberConversion: {
+        original: data.phoneNumber,
+        converted: data.phoneNumber.replace(/^0/, '250'),
+      },
+      correspondent,
+      apiUrl: `${this.pawapayBaseUrl}/deposits`,
+      tokenPresent: !!this.pawapayToken,
+      tokenPreview: this.pawapayToken ? this.pawapayToken.substring(0, 20) + '...' : 'NOT SET',
+    };
+  }
+
+  /**
    * Determine mobile money operator from phone number
    */
   private getCorrespondent(phoneNumber: string): string {
