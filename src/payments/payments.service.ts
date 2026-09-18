@@ -43,6 +43,9 @@ export class PaymentsService {
       };
 
       this.logger.log('🔵 Initiating PawaPay deposit:', JSON.stringify(payload, null, 2));
+      this.logger.log('📱 Phone number converted: ' + data.phoneNumber + ' -> ' + payload.payer.address.value);
+      this.logger.log('💰 Amount: ' + amountNumber + ' RWF');
+      this.logger.log('🏢 Correspondent: ' + correspondent);
 
       const response = await axios.post(
         `${this.pawapayBaseUrl}/deposits`,
@@ -52,10 +55,12 @@ export class PaymentsService {
             'Authorization': `Bearer ${this.pawapayToken}`,
             'Content-Type': 'application/json',
           },
+          timeout: 30000, // 30 second timeout
         },
       );
 
-      this.logger.log('✅ PawaPay deposit initiated:', response.data);
+      this.logger.log('✅ PawaPay deposit initiated:', JSON.stringify(response.data, null, 2));
+      this.logger.log('📊 Response status: ' + response.status);
 
       return {
         success: true,
@@ -65,10 +70,31 @@ export class PaymentsService {
       };
     } catch (error) {
       this.logger.error('❌ PawaPay deposit failed:', error.response?.data || error.message);
+      this.logger.error('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+
+      // Specific error messages
+      let errorMessage = 'Payment initiation failed';
+
+      if (error.response?.status === 400) {
+        errorMessage = 'Invalid phone number or amount. Please check and try again.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Payment service authentication failed. Please contact support.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Payment service access denied. Please contact support.';
+      } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        errorMessage = 'Payment service timeout. Please try again.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
 
       return {
         success: false,
-        error: error.response?.data?.message || 'Payment initiation failed',
+        error: errorMessage,
+        details: error.response?.data,
       };
     }
   }
