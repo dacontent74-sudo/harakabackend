@@ -82,6 +82,37 @@ export class Order {
   @Column({ nullable: true })
   depositId: string; // PawaPay deposit ID
 
+  // Courier Fields
+  @Column({ nullable: true })
+  courierId: number;
+
+  @Column({ nullable: true })
+  courierName: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  courierLatitude: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  courierLongitude: number;
+
+  @Column({ nullable: true })
+  orderType: string; // 'food' or 'parcel'
+
+  @Column({ nullable: true })
+  restaurantName: string;
+
+  @Column({ nullable: true })
+  parcelDescription: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  deliveryFee: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  amount: number;
+
+  @Column({ nullable: true })
+  customerPhone: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
