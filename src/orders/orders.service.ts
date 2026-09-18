@@ -36,6 +36,11 @@ export class OrdersService {
     console.log('📦 Creating pending order');
     console.log('📥 Received DTO:', JSON.stringify(dto, null, 2));
 
+    // Validate pickup coordinates exist (required for parcel orders)
+    if (!dto.pickupLatitude || !dto.pickupLongitude) {
+      throw new Error('Pickup GPS coordinates are required. Please enable location in your device.');
+    }
+
     const order = this.orderRepository.create({
       id: orderId,
       ...dto,
@@ -96,21 +101,37 @@ export class OrdersService {
   async createOrder(orderData: any) {
     const orderId = this.generateOrderId();
 
-    // Default restaurant location in Kigali (you can change this to actual restaurant coordinates)
+    // Default restaurant location in Kigali
     const DEFAULT_RESTAURANT_LAT = '-1.9403';
     const DEFAULT_RESTAURANT_LNG = '30.0606';
 
-    // If this is a food order (has items), add restaurant pickup coordinates
+    // Determine order type: food (has items) or parcel
     const isFood = orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0;
+
+    // FOOD orders: default to restaurant if coordinates missing
+    // PARCEL orders: require valid coordinates from customer
+    let pickupLat = orderData.pickupLatitude;
+    let pickupLng = orderData.pickupLongitude;
+    let pickupAddr = orderData.pickupAddress;
+
+    if (isFood) {
+      pickupLat = pickupLat || DEFAULT_RESTAURANT_LAT;
+      pickupLng = pickupLng || DEFAULT_RESTAURANT_LNG;
+      pickupAddr = pickupAddr || 'Restaurant - Kigali City Center';
+    } else {
+      // Parcel orders MUST have pickup coordinates
+      if (!pickupLat || !pickupLng) {
+        throw new Error('Parcel delivery requires sender GPS location');
+      }
+    }
 
     const order = this.orderRepository.create({
       id: orderId,
       ...orderData,
       status: 'confirmed',
-      // Add pickup coordinates for food orders if not provided
-      pickupLatitude: isFood && !orderData.pickupLatitude ? DEFAULT_RESTAURANT_LAT : orderData.pickupLatitude,
-      pickupLongitude: isFood && !orderData.pickupLongitude ? DEFAULT_RESTAURANT_LNG : orderData.pickupLongitude,
-      pickupAddress: isFood && !orderData.pickupAddress ? 'Restaurant - Kigali City Center' : orderData.pickupAddress,
+      pickupLatitude: pickupLat,
+      pickupLongitude: pickupLng,
+      pickupAddress: pickupAddr,
     });
 
     return await this.orderRepository.save(order);
