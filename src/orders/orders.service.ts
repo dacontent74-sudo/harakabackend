@@ -95,10 +95,22 @@ export class OrdersService {
 
   async createOrder(orderData: any) {
     const orderId = this.generateOrderId();
+
+    // Default restaurant location in Kigali (you can change this to actual restaurant coordinates)
+    const DEFAULT_RESTAURANT_LAT = '-1.9403';
+    const DEFAULT_RESTAURANT_LNG = '30.0606';
+
+    // If this is a food order (has items), add restaurant pickup coordinates
+    const isFood = orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0;
+
     const order = this.orderRepository.create({
       id: orderId,
       ...orderData,
       status: 'confirmed',
+      // Add pickup coordinates for food orders if not provided
+      pickupLatitude: isFood && !orderData.pickupLatitude ? DEFAULT_RESTAURANT_LAT : orderData.pickupLatitude,
+      pickupLongitude: isFood && !orderData.pickupLongitude ? DEFAULT_RESTAURANT_LNG : orderData.pickupLongitude,
+      pickupAddress: isFood && !orderData.pickupAddress ? 'Restaurant - Kigali City Center' : orderData.pickupAddress,
     });
 
     return await this.orderRepository.save(order);
