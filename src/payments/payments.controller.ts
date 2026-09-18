@@ -109,7 +109,39 @@ export class PaymentsController {
     return result;
   }
 
-  // Note: We use polling instead of webhooks since PawaPay callback
-  // is shared with africa-cyber-trust app at:
-  // https://africa-cyber-trust.onrender.com/api/payments/webhooks/pawapay
+  /**
+   * PawaPay webhook endpoint
+   */
+  @Post('webhooks/pawapay')
+  async handleWebhook(@Body() payload: any) {
+    this.logger.log('🔔 PawaPay webhook received:', JSON.stringify(payload, null, 2));
+
+    try {
+      const depositId = payload.depositId;
+      const status = payload.status;
+
+      if (status === 'COMPLETED') {
+        // Extract order ID from deposit ID
+        const orderId = depositId.split('-')[0];
+        const order = await this.ordersService.getOrderById(orderId);
+
+        if (order && order.paymentStatus !== 'paid') {
+          order.paymentStatus = 'paid';
+          order.status = 'confirmed';
+          await this.ordersService.updateOrder(order);
+          this.logger.log(`✅ Payment webhook: Order ${orderId} confirmed`);
+        }
+      } else if (status === 'FAILED') {
+        this.logger.error(`❌ Payment webhook: Payment failed for ${depositId}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error('❌ Webhook error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Webhook URL for PawaPay dashboard:
+  // https://harakabackend.onrender.com/api/v1/payments/webhooks/pawapay
 }
