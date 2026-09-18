@@ -68,13 +68,25 @@ export class PaymentsService {
       let userMessage = 'Payment initiated. Please approve on your phone.';
 
       if (pawapayStatus === 'FAILED' || pawapayStatus === 'REJECTED') {
-        this.logger.error('❌ PawaPay rejected deposit:', response.data);
-        userMessage = `Payment failed: ${response.data.failureReason || 'Unknown reason'}`;
+        this.logger.error('❌ PawaPay rejected deposit!');
+        this.logger.error('Full response:', JSON.stringify(response.data, null, 2));
+        this.logger.error('Failure reason:', response.data.failureReason);
+        this.logger.error('Failure code:', response.data.failureCode);
+        this.logger.error('Rejection reason:', response.data.rejectionReason);
+
+        const failureMsg = response.data.failureReason
+          || response.data.rejectionReason
+          || response.data.failureMessage
+          || response.data.reason
+          || 'Unknown - check PawaPay dashboard';
+
+        userMessage = `Payment failed: ${failureMsg}`;
+
         return {
           success: false,
           error: userMessage,
           pawapayStatus,
-          details: response.data,
+          fullResponse: response.data,
         };
       }
 
