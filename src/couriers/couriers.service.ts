@@ -90,27 +90,46 @@ export class CouriersService {
       take: 20,
     });
 
-    return jobs.map(job => ({
-      id: job.id,
-      orderId: job.id,
-      orderType: job.orderType,
-      restaurantName: job.restaurantName,
-      description: job.parcelDescription,
-      pickupAddress: job.pickupAddress,
-      deliveryAddress: job.deliveryAddress,
-      pickupLatitude: job.pickupLatitude,
-      pickupLongitude: job.pickupLongitude,
-      deliveryLatitude: job.deliveryLatitude,
-      deliveryLongitude: job.deliveryLongitude,
-      distance: job.distance,
-      deliveryFee: job.deliveryFee,
-      estimatedTime: Math.round(parseFloat(job.distance?.toString() || '0') * 5),
-      customerPhone: job.customerPhone,
-      recipientPhone: job.recipientPhone,
-      senderName: job.senderName,
-      recipientName: job.recipientName,
-      items: job.items,
-    }));
+    return jobs.map(job => {
+      // Determine order type: if it has items array, it's food, otherwise parcel
+      const isFood = job.items && Array.isArray(job.items) && job.items.length > 0;
+      const orderType = isFood ? 'food' : 'parcel';
+
+      // Extract delivery fee from pricing if not directly available
+      let deliveryFee = job.deliveryFee;
+      if (!deliveryFee && job.pricing && typeof job.pricing === 'object') {
+        const pricing = job.pricing as any;
+        deliveryFee = pricing.breakdown?.delivery || pricing.breakdown?.total || 0;
+      }
+
+      // For food orders, pickup is restaurant location (use a default for now)
+      // For parcel orders, use the sender's pickup location
+      const pickupAddress = isFood
+        ? (job.restaurant || 'Restaurant Location')
+        : (job.pickupAddress || 'Pickup Location');
+
+      return {
+        id: job.id,
+        orderId: job.id,
+        orderType: orderType,
+        restaurantName: isFood ? job.restaurant : null,
+        description: !isFood ? (job.packageDescription || job.parcelDescription || 'Parcel') : null,
+        pickupAddress: pickupAddress,
+        deliveryAddress: job.deliveryAddress || 'Delivery Location',
+        pickupLatitude: job.pickupLatitude,
+        pickupLongitude: job.pickupLongitude,
+        deliveryLatitude: job.deliveryLatitude,
+        deliveryLongitude: job.deliveryLongitude,
+        distance: parseFloat(job.distance?.toString() || '0'),
+        deliveryFee: parseFloat(deliveryFee?.toString() || '0'),
+        estimatedTime: Math.round(parseFloat(job.distance?.toString() || '0') * 5),
+        customerPhone: job.senderPhone || job.recipientPhone || null,
+        recipientPhone: job.recipientPhone,
+        senderName: job.senderName,
+        recipientName: job.recipientName,
+        items: job.items,
+      };
+    });
   }
 
   async acceptJob(orderId: string, courierId: number) {
