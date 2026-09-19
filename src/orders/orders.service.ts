@@ -141,6 +141,10 @@ export class OrdersService {
     return await this.orderRepository.findOne({ where: { id } });
   }
 
+  async getOrderByDepositId(depositId: string) {
+    return await this.orderRepository.findOne({ where: { depositId } });
+  }
+
   async getAllOrders() {
     return await this.orderRepository.find({
       order: { createdAt: 'DESC' }, // Newest first

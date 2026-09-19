@@ -120,16 +120,25 @@ export class PaymentsController {
       const depositId = payload.depositId;
       const status = payload.status;
 
-      if (status === 'COMPLETED') {
-        // Extract order ID from deposit ID
-        const orderId = depositId.split('-')[0];
-        const order = await this.ordersService.getOrderById(orderId);
+      this.logger.log(`📊 Webhook - depositId: ${depositId}, status: ${status}`);
 
-        if (order && order.paymentStatus !== 'paid') {
-          order.paymentStatus = 'paid';
-          order.status = 'confirmed';
-          await this.ordersService.updateOrder(order);
-          this.logger.log(`✅ Payment webhook: Order ${orderId} confirmed`);
+      if (status === 'COMPLETED') {
+        // Find order by depositId (depositId is now a UUID, not orderId-timestamp)
+        const order = await this.ordersService.getOrderByDepositId(depositId);
+
+        if (order) {
+          this.logger.log(`✅ Found order: ${order.id}, current status: ${order.paymentStatus}`);
+
+          if (order.paymentStatus !== 'paid') {
+            order.paymentStatus = 'paid';
+            order.status = 'confirmed';
+            await this.ordersService.updateOrder(order);
+            this.logger.log(`✅ Payment webhook: Order ${order.id} confirmed and marked as paid`);
+          } else {
+            this.logger.log(`ℹ️ Order ${order.id} already marked as paid`);
+          }
+        } else {
+          this.logger.error(`❌ No order found with depositId: ${depositId}`);
         }
       } else if (status === 'FAILED') {
         this.logger.error(`❌ Payment webhook: Payment failed for ${depositId}`);
