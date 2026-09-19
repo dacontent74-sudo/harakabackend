@@ -28,6 +28,9 @@ export class PaymentsService {
         ? parseFloat(data.amount)
         : data.amount;
 
+      // Round to whole number - Rwanda mobile money doesn't support decimals
+      const roundedAmount = Math.round(amountNumber);
+
       // Normalize phone number: remove all non-digits, ensure 250 prefix
       const cleanPhone = data.phoneNumber.replace(/\D/g, ''); // Remove +, spaces, etc
       const normalizedPhone = cleanPhone.startsWith('250')
@@ -36,7 +39,7 @@ export class PaymentsService {
 
       const payload = {
         depositId,
-        amount: amountNumber.toFixed(2),
+        amount: roundedAmount.toFixed(0), // No decimals for Rwanda mobile money
         currency: 'RWF',
         correspondent,
         payer: {
@@ -51,7 +54,7 @@ export class PaymentsService {
 
       this.logger.log('🔵 Initiating PawaPay deposit:', JSON.stringify(payload, null, 2));
       this.logger.log('📱 Phone number converted: ' + data.phoneNumber + ' -> ' + normalizedPhone);
-      this.logger.log('💰 Amount: ' + amountNumber + ' RWF');
+      this.logger.log('💰 Amount: ' + data.amount + ' -> ' + roundedAmount + ' RWF (rounded)');
       this.logger.log('🏢 Correspondent: ' + correspondent);
 
       const response = await axios.post(
@@ -179,6 +182,9 @@ export class PaymentsService {
       ? parseFloat(data.amount)
       : data.amount;
 
+    // Round to whole number - Rwanda mobile money doesn't support decimals
+    const roundedAmount = Math.round(amountNumber);
+
     // Normalize phone number: remove all non-digits, ensure 250 prefix
     const cleanPhone = data.phoneNumber.replace(/\D/g, '');
     const normalizedPhone = cleanPhone.startsWith('250')
@@ -187,7 +193,7 @@ export class PaymentsService {
 
     const payload = {
       depositId,
-      amount: amountNumber.toFixed(2),
+      amount: roundedAmount.toFixed(0), // No decimals for Rwanda mobile money
       currency: 'RWF',
       correspondent,
       payer: {
