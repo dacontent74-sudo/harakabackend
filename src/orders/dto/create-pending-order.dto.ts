@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 
 export class CreatePendingOrderDto {
   // Sender
@@ -43,4 +43,13 @@ export class CreatePendingOrderDto {
   @IsString()
   @IsNotEmpty()
   vehicleType: string;
+
+  // Payment (optional)
+  @IsOptional()
+  @IsString()
+  paymentPayer?: string; // 'sender' or 'receiver'
+
+  @IsOptional()
+  @IsBoolean()
+  receiverPaysOnDelivery?: boolean;
 }

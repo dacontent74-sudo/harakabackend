@@ -82,6 +82,9 @@ export class Order {
   @Column({ nullable: true })
   depositId: string; // PawaPay deposit ID
 
+  @Column({ default: false })
+  receiverPaysOnDelivery: boolean; // If true, courier collects payment from receiver
+
   // Courier Fields
   @Column({ nullable: true })
   courierId: number;

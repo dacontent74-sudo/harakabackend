@@ -144,4 +144,42 @@ export class PaymentsController {
 
   // Webhook URL for PawaPay dashboard:
   // https://harakabackend.onrender.com/api/v1/payments/webhooks/pawapay
+
+  /**
+   * Collect payment from receiver on delivery (for receiver-pays orders)
+   */
+  @Post('collect-receiver')
+  async collectReceiverPayment(
+    @Body() dto: { orderId: string; phoneNumber: string; amount: number },
+  ) {
+    this.logger.log(`💰 Collecting payment from receiver for order ${dto.orderId}`);
+    this.logger.log(`📱 Phone: ${dto.phoneNumber}, Amount: ${dto.amount} RWF`);
+
+    try {
+      // Initiate payment from receiver
+      const result = await this.paymentsService.initiateDeposit({
+        orderId: dto.orderId,
+        phoneNumber: dto.phoneNumber,
+        amount: dto.amount,
+        description: 'Delivery payment - receiver pays on delivery',
+      });
+
+      // If payment successful, update order payment status
+      if (result.success && (result.status === 'ACCEPTED' || result.status === 'COMPLETED')) {
+        const order = await this.ordersService.getOrderById(dto.orderId);
+
+        if (order) {
+          order.paymentStatus = result.status === 'COMPLETED' ? 'paid' : 'pending';
+          order.depositId = result.depositId;
+          await this.ordersService.updateOrder(order);
+          this.logger.log(`✅ Receiver payment request sent for order ${dto.orderId}`);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error('❌ Receiver payment collection error:', error);
+      throw error;
+    }
+  }
 }
