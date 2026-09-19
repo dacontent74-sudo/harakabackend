@@ -49,7 +49,7 @@ export class PaymentsController {
       orderId: dto.orderId,
       amount,
       phoneNumber: dto.phoneNumber,
-      description: `Payment for Order ${dto.orderId}`,
+      description: 'Haraka Order', // Max 22 chars for PawaPay
     });
 
     this.logger.log(`📊 PawaPay result:`, JSON.stringify(result, null, 2));
@@ -161,7 +161,7 @@ export class PaymentsController {
         orderId: dto.orderId,
         phoneNumber: dto.phoneNumber,
         amount: dto.amount,
-        description: 'Delivery payment - receiver pays on delivery',
+        description: 'Haraka Delivery', // Max 22 chars for PawaPay
       });
 
       // If payment successful, update order payment status
