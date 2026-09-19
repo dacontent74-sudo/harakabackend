@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class PaymentsService {
@@ -17,7 +18,7 @@ export class PaymentsService {
     description: string;
   }) {
     try {
-      const depositId = `${data.orderId}-${Date.now()}`;
+      const depositId = uuidv4(); // Generate proper 36-character UUID for PawaPay
 
       // Determine correspondent based on phone number prefix
       const correspondent = this.getCorrespondent(data.phoneNumber);
@@ -166,7 +167,7 @@ export class PaymentsService {
     phoneNumber: string;
     description: string;
   }) {
-    const depositId = `${data.orderId}-${Date.now()}`;
+    const depositId = uuidv4(); // Generate proper 36-character UUID for PawaPay
     const correspondent = this.getCorrespondent(data.phoneNumber);
     const amountNumber = typeof data.amount === 'string'
       ? parseFloat(data.amount)
