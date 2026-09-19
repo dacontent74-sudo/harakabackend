@@ -28,6 +28,12 @@ export class PaymentsService {
         ? parseFloat(data.amount)
         : data.amount;
 
+      // Normalize phone number: remove all non-digits, ensure 250 prefix
+      const cleanPhone = data.phoneNumber.replace(/\D/g, ''); // Remove +, spaces, etc
+      const normalizedPhone = cleanPhone.startsWith('250')
+        ? cleanPhone
+        : '250' + cleanPhone.replace(/^0/, '');
+
       const payload = {
         depositId,
         amount: amountNumber.toFixed(2),
@@ -36,7 +42,7 @@ export class PaymentsService {
         payer: {
           type: 'MSISDN',
           address: {
-            value: data.phoneNumber.replace(/^0/, '250'), // Convert 078... to 250788...
+            value: normalizedPhone, // Clean format: 250788613669
           },
         },
         customerTimestamp: new Date().toISOString(),
@@ -44,7 +50,7 @@ export class PaymentsService {
       };
 
       this.logger.log('🔵 Initiating PawaPay deposit:', JSON.stringify(payload, null, 2));
-      this.logger.log('📱 Phone number converted: ' + data.phoneNumber + ' -> ' + payload.payer.address.value);
+      this.logger.log('📱 Phone number converted: ' + data.phoneNumber + ' -> ' + normalizedPhone);
       this.logger.log('💰 Amount: ' + amountNumber + ' RWF');
       this.logger.log('🏢 Correspondent: ' + correspondent);
 
@@ -173,6 +179,12 @@ export class PaymentsService {
       ? parseFloat(data.amount)
       : data.amount;
 
+    // Normalize phone number: remove all non-digits, ensure 250 prefix
+    const cleanPhone = data.phoneNumber.replace(/\D/g, '');
+    const normalizedPhone = cleanPhone.startsWith('250')
+      ? cleanPhone
+      : '250' + cleanPhone.replace(/^0/, '');
+
     const payload = {
       depositId,
       amount: amountNumber.toFixed(2),
@@ -181,7 +193,7 @@ export class PaymentsService {
       payer: {
         type: 'MSISDN',
         address: {
-          value: data.phoneNumber.replace(/^0/, '250'),
+          value: normalizedPhone,
         },
       },
       customerTimestamp: new Date().toISOString(),
@@ -194,7 +206,7 @@ export class PaymentsService {
       payload,
       phoneNumberConversion: {
         original: data.phoneNumber,
-        converted: data.phoneNumber.replace(/^0/, '250'),
+        converted: normalizedPhone,
       },
       correspondent,
       apiUrl: `${this.pawapayBaseUrl}/deposits`,
@@ -207,15 +219,16 @@ export class PaymentsService {
    * Determine mobile money operator from phone number
    */
   private getCorrespondent(phoneNumber: string): string {
-    // Remove leading 0 or 250
-    const normalized = phoneNumber.replace(/^(0|250)/, '');
+    // Strip all non-digits first, then remove country code
+    const digitsOnly = phoneNumber.replace(/\D/g, '');
+    const normalized = digitsOnly.replace(/^250/, '').replace(/^0/, '');
 
-    // MTN: 078, 079
+    // MTN: 78, 79
     if (normalized.startsWith('78') || normalized.startsWith('79')) {
       return 'MTN_MOMO_RWA';
     }
 
-    // Airtel: 073
+    // Airtel: 73
     if (normalized.startsWith('73')) {
       return 'AIRTEL_MOMO_RWA';
     }
