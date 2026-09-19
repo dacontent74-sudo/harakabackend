@@ -72,19 +72,32 @@ export class PaymentsController {
    */
   @Get('status/:depositId')
   async checkStatus(@Param('depositId') depositId: string) {
+    this.logger.log(`📊 Checking payment status for depositId: ${depositId}`);
     const result = await this.paymentsService.checkDepositStatus(depositId);
 
     // If payment completed, update order
     if (result.success && result.status === 'COMPLETED') {
-      const orderId = depositId.split('-')[0];
-      const order = await this.ordersService.getOrderById(orderId);
+      this.logger.log(`✅ Payment COMPLETED for depositId: ${depositId}`);
 
-      if (order && order.paymentStatus !== 'paid') {
-        order.paymentStatus = 'paid';
-        order.status = 'confirmed';
-        await this.ordersService.updateOrder(order);
-        this.logger.log(`✅ Payment confirmed for order ${orderId}`);
+      // Find order by depositId (depositId is a UUID, not orderId-timestamp)
+      const order = await this.ordersService.getOrderByDepositId(depositId);
+
+      if (order) {
+        this.logger.log(`✅ Found order: ${order.id}, current payment status: ${order.paymentStatus}`);
+
+        if (order.paymentStatus !== 'paid') {
+          order.paymentStatus = 'paid';
+          order.status = 'confirmed';
+          await this.ordersService.updateOrder(order);
+          this.logger.log(`✅ Payment confirmed and order ${order.id} updated via polling`);
+        } else {
+          this.logger.log(`ℹ️ Order ${order.id} already marked as paid`);
+        }
+      } else {
+        this.logger.error(`❌ No order found with depositId: ${depositId}`);
       }
+    } else {
+      this.logger.log(`⏳ Payment status: ${result.status || 'unknown'}`);
     }
 
     return result;
