@@ -73,4 +73,35 @@ export class OrdersController {
       data: orders,
     };
   }
+
+  // Update order status (for restaurant app)
+  @Put(':id/status')
+  async updateOrderStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string },
+  ) {
+    try {
+      const order = await this.ordersService.getOrderById(id);
+      if (!order) {
+        return {
+          success: false,
+          message: 'Order not found',
+        };
+      }
+
+      order.status = body.status;
+      await this.ordersService.updateOrder(order);
+
+      return {
+        success: true,
+        message: 'Order status updated',
+        data: order,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
 }
