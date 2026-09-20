@@ -4,6 +4,7 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PricingModule } from '../pricing/pricing.module';
 import { Order } from './entities/order.entity';
+import { StatusValidationService } from './services/status-validation.service';
 
 @Module({
   imports: [
@@ -11,7 +12,7 @@ import { Order } from './entities/order.entity';
     PricingModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, StatusValidationService],
   exports: [OrdersService],
 })
 export class OrdersModule {}

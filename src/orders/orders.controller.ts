@@ -1,11 +1,17 @@
-import { Controller, Post, Get, Body, Param, Put } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Put, Logger } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
+import { StatusValidationService } from './services/status-validation.service';
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  private readonly logger = new Logger(OrdersController.name);
+
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly statusValidation: StatusValidationService,
+  ) {}
 
   // Create pending order (sender fills their info, system sends link to recipient)
   @Post('pending')
@@ -74,7 +80,7 @@ export class OrdersController {
     };
   }
 
-  // Update order status (for restaurant app)
+  // Update order status (for restaurant/courier app) with validation
   @Put(':id/status')
   async updateOrderStatus(
     @Param('id') id: string,
@@ -89,8 +95,14 @@ export class OrdersController {
         };
       }
 
+      // SECURITY: Validate status transition
+      this.statusValidation.validateTransition(order.status, body.status);
+
+      const oldStatus = order.status;
       order.status = body.status;
       await this.ordersService.updateOrder(order);
+
+      this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${body.status}`);
 
       return {
         success: true,
@@ -98,6 +110,7 @@ export class OrdersController {
         data: order,
       };
     } catch (error) {
+      this.logger.error(`❌ Status update failed: ${error.message}`);
       return {
         success: false,
         message: error.message,
