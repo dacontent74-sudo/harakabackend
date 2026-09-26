@@ -4,6 +4,7 @@ import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
 import { SmsService } from '../notifications/sms.service';
+import { Order } from './entities/order.entity';
 
 @Controller('orders')
 export class OrdersController {
@@ -56,18 +57,18 @@ export class OrdersController {
   // Confirm order (after recipient selects location and sender confirms)
   @Post()
   async createOrder(@Body() orderData: any) {
-    const order = await this.ordersService.createOrder(orderData);
+    const createdOrder = await this.ordersService.createOrder(orderData) as Order;
 
     // 📱 SMS NOTIFICATION: Order Created (only if order created with 'pending' status)
-    if (order && typeof order === 'object' && 'senderPhone' in order) {
-      const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
-      const customerName = order.senderName || order.recipientName || 'Customer';
+    if (createdOrder) {
+      const customerPhone = createdOrder.senderPhone || createdOrder.recipientPhone || createdOrder.customerPhone;
+      const customerName = createdOrder.senderName || createdOrder.recipientName || 'Customer';
 
-      if (customerPhone && order.status === 'pending') {
+      if (customerPhone && createdOrder.status === 'pending') {
         this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
         this.smsService.sendCustomSms(
           customerPhone,
-          `Hi ${customerName}! Your order #${order.id.substring(0, 8).toUpperCase()} has been created successfully. ${order.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(order.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
+          `Hi ${customerName}! Your order #${createdOrder.id.substring(0, 8).toUpperCase()} has been created successfully. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
         ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
       }
     }
@@ -75,7 +76,7 @@ export class OrdersController {
     return {
       success: true,
       message: 'Order created successfully',
-      data: order,
+      data: createdOrder,
     };
   }
 
