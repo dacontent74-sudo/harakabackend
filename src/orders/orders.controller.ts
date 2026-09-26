@@ -58,16 +58,18 @@ export class OrdersController {
   async createOrder(@Body() orderData: any) {
     const order = await this.ordersService.createOrder(orderData);
 
-    // 📱 SMS NOTIFICATION: Order Created
-    const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
-    const customerName = order.senderName || order.recipientName || 'Customer';
+    // 📱 SMS NOTIFICATION: Order Created (only if order created with 'pending' status)
+    if (order && typeof order === 'object' && 'senderPhone' in order) {
+      const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+      const customerName = order.senderName || order.recipientName || 'Customer';
 
-    if (customerPhone && order.status === 'pending') {
-      this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
-      this.smsService.sendCustomSms(
-        customerPhone,
-        `Hi ${customerName}! Your order #${order.id.substring(0, 8).toUpperCase()} has been created successfully. ${order.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(order.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
-      ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      if (customerPhone && order.status === 'pending') {
+        this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! Your order #${order.id.substring(0, 8).toUpperCase()} has been created successfully. ${order.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(order.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
     }
 
     return {
