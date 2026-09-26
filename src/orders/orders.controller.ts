@@ -150,6 +150,15 @@ export class OrdersController {
         ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
       }
 
+      // When courier ARRIVES AT PICKUP (at restaurant)
+      if (body.status === 'arrived_at_pickup' && customerPhone) {
+        this.logger.log(`📱 Sending "courier arrived at pickup" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! Your courier has arrived at ${order.restaurant || order.restaurantName || 'the restaurant'} to pick up your order #${order.id.substring(0, 8).toUpperCase()}. Your food will be on its way to you very soon! 🏍️ - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
       // When restaurant marks order as READY
       if (body.status === 'ready' && customerPhone) {
         this.logger.log(`📱 Sending "order ready" SMS to ${customerPhone}`);
