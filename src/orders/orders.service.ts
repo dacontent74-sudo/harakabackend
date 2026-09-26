@@ -98,7 +98,7 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  async createOrder(orderData: any) {
+  async createOrder(orderData: any): Promise<Order> {
     const orderId = this.generateOrderId();
 
     // Default restaurant location in Kigali

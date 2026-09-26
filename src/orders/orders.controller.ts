@@ -57,7 +57,7 @@ export class OrdersController {
   // Confirm order (after recipient selects location and sender confirms)
   @Post()
   async createOrder(@Body() orderData: any) {
-    const createdOrder = await this.ordersService.createOrder(orderData) as Order;
+    const createdOrder = await this.ordersService.createOrder(orderData);
 
     // 📱 SMS NOTIFICATION: Order Created (only if order created with 'pending' status)
     if (createdOrder) {
