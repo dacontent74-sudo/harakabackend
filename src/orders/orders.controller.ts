@@ -57,6 +57,19 @@ export class OrdersController {
   @Post()
   async createOrder(@Body() orderData: any) {
     const order = await this.ordersService.createOrder(orderData);
+
+    // 📱 SMS NOTIFICATION: Order Created
+    const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+    const customerName = order.senderName || order.recipientName || 'Customer';
+
+    if (customerPhone && order.status === 'pending') {
+      this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
+      this.smsService.sendCustomSms(
+        customerPhone,
+        `Hi ${customerName}! Your order #${order.id.substring(0, 8).toUpperCase()} has been created successfully. ${order.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(order.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
+      ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+    }
+
     return {
       success: true,
       message: 'Order created successfully',
@@ -109,6 +122,33 @@ export class OrdersController {
       // 📱 SEND SMS NOTIFICATIONS based on status change
       const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
       const customerName = order.senderName || order.recipientName || 'Customer';
+
+      // When order is CONFIRMED (restaurant received it)
+      if (body.status === 'confirmed' && customerPhone && oldStatus !== 'confirmed') {
+        this.logger.log(`📱 Sending "order confirmed by restaurant" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! ${order.restaurant || order.restaurantName || 'The restaurant'} has received your order #${order.id.substring(0, 8).toUpperCase()}. They will start preparing it soon! - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
+      // When restaurant starts PREPARING
+      if (body.status === 'preparing' && customerPhone) {
+        this.logger.log(`📱 Sending "order preparing" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! Good news! ${order.restaurant || order.restaurantName || 'The restaurant'} is now preparing your order #${order.id.substring(0, 8).toUpperCase()}. It will be ready soon! 👨‍🍳 - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
+      // When courier is ASSIGNED
+      if (body.status === 'assigned' && customerPhone) {
+        this.logger.log(`📱 Sending "courier assigned" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! A courier has been assigned to your order #${order.id.substring(0, 8).toUpperCase()}! They will pick it up once it's ready. 🏍️ - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
 
       // When restaurant marks order as READY
       if (body.status === 'ready' && customerPhone) {

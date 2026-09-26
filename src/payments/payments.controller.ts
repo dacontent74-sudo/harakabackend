@@ -3,6 +3,7 @@ import { PaymentsService } from './payments.service';
 import { OrdersService } from '../orders/orders.service';
 import { WebhookGuard } from './guards/webhook.guard';
 import { IdempotencyService } from './services/idempotency.service';
+import { SmsService } from '../notifications/sms.service';
 
 @Controller('payments')
 export class PaymentsController {
@@ -12,6 +13,7 @@ export class PaymentsController {
     private readonly paymentsService: PaymentsService,
     private readonly ordersService: OrdersService,
     private readonly idempotencyService: IdempotencyService,
+    private readonly smsService: SmsService,
   ) {}
 
   /**
@@ -63,6 +65,18 @@ export class PaymentsController {
       order.depositId = result.depositId;
       await this.ordersService.updateOrder(order);
       this.logger.log(`✅ Order updated with payment info`);
+
+      // 📱 SMS NOTIFICATION: Payment Initiated
+      const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+      const customerName = order.senderName || order.recipientName || 'Customer';
+
+      if (customerPhone) {
+        this.logger.log(`📱 Sending "payment initiated" SMS to ${customerPhone}`);
+        this.smsService.sendCustomSms(
+          customerPhone,
+          `Hi ${customerName}! Please check your phone for the Mobile Money payment prompt to pay ${Math.round(amount)} RWF for order #${order.id.substring(0, 8).toUpperCase()}. - Haraka Delivery`
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
     } else {
       this.logger.error(`❌ Payment failed:`, result.error);
     }
@@ -183,6 +197,18 @@ export class PaymentsController {
           order.status = 'confirmed';
           await this.ordersService.updateOrder(order);
           this.logger.log(`✅ Payment webhook: Order ${order.id} confirmed and marked as paid`);
+
+          // 📱 SMS NOTIFICATION: Payment Confirmed
+          const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+          const customerName = order.senderName || order.recipientName || 'Customer';
+
+          if (customerPhone) {
+            this.logger.log(`📱 Sending "payment confirmed" SMS to ${customerPhone}`);
+            this.smsService.sendCustomSms(
+              customerPhone,
+              `Hi ${customerName}! Payment confirmed! ✅ Your order #${order.id.substring(0, 8).toUpperCase()} (${Math.round(order.total || 0)} RWF) has been sent to ${order.restaurant || order.restaurantName || 'the restaurant'}. They will start preparing it soon. - Haraka Delivery`
+            ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          }
         } else {
           this.logger.error(`❌ No order found with depositId: ${depositId}`);
           return { success: false, error: 'Order not found' };
