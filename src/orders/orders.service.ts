@@ -135,7 +135,7 @@ export class OrdersService {
     });
 
     const savedOrder = await this.orderRepository.save(order);
-    return savedOrder as Order;
+    return savedOrder as unknown as Order;
   }
 
   async getOrderById(id: string) {
