@@ -134,7 +134,8 @@ export class OrdersService {
       pickupAddress: pickupAddr,
     });
 
-    return await this.orderRepository.save(order);
+    const savedOrder = await this.orderRepository.save(order);
+    return savedOrder as Order;
   }
 
   async getOrderById(id: string) {
