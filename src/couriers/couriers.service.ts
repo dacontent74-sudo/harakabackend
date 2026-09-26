@@ -84,8 +84,9 @@ export class CouriersService {
   }
 
   async getAvailableJobs() {
+    // ONLY show jobs that are READY for pickup (restaurant marked them ready)
     const jobs = await this.orderRepository.find({
-      where: { status: 'confirmed' },
+      where: { status: 'ready' },
       order: { createdAt: 'DESC' },
       take: 20,
     });

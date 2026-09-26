@@ -12,6 +12,9 @@ export class Order {
   @Column({ nullable: true })
   senderPhone: string;
 
+  @Column({ nullable: true })
+  senderEmail: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true })
   pickupLatitude: number;
 
@@ -27,6 +30,9 @@ export class Order {
 
   @Column({ nullable: true })
   recipientPhone: string;
+
+  @Column({ nullable: true })
+  recipientEmail: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true })
   deliveryLatitude: number;

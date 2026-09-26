@@ -3,6 +3,7 @@ import { OrdersService } from './orders.service';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
+import { SmsService } from '../notifications/sms.service';
 
 @Controller('orders')
 export class OrdersController {
@@ -11,6 +12,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly statusValidation: StatusValidationService,
+    private readonly smsService: SmsService,
   ) {}
 
   // Create pending order (sender fills their info, system sends link to recipient)
@@ -84,7 +86,7 @@ export class OrdersController {
   @Put(':id/status')
   async updateOrderStatus(
     @Param('id') id: string,
-    @Body() body: { status: string },
+    @Body() body: { status: string; courierName?: string; courierPhone?: string },
   ) {
     try {
       const order = await this.ordersService.getOrderById(id);
@@ -103,6 +105,43 @@ export class OrdersController {
       await this.ordersService.updateOrder(order);
 
       this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${body.status}`);
+
+      // 📱 SEND SMS NOTIFICATIONS based on status change
+      const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+      const customerName = order.senderName || order.recipientName || 'Customer';
+
+      // When restaurant marks order as READY
+      if (body.status === 'ready' && customerPhone) {
+        this.logger.log(`📱 Sending "order ready" SMS to ${customerPhone}`);
+        this.smsService.sendOrderReadySms({
+          phone: customerPhone,
+          customerName: customerName,
+          orderId: order.id,
+          restaurantName: order.restaurant || order.restaurantName,
+        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
+      // When courier picks up the order
+      if (body.status === 'picked_up' && customerPhone && body.courierName) {
+        this.logger.log(`📱 Sending "out for delivery" SMS to ${customerPhone}`);
+        this.smsService.sendOrderPickedUpSms({
+          phone: customerPhone,
+          customerName: customerName,
+          orderId: order.id,
+          courierName: body.courierName,
+          courierPhone: body.courierPhone || 'N/A',
+        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
+      // When order is delivered
+      if (body.status === 'delivered' && customerPhone) {
+        this.logger.log(`📱 Sending "order delivered" SMS to ${customerPhone}`);
+        this.smsService.sendOrderDeliveredSms({
+          phone: customerPhone,
+          customerName: customerName,
+          orderId: order.id,
+        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
 
       return {
         success: true,
