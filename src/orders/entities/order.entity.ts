@@ -130,4 +130,29 @@ export class Order {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // Order Lifecycle Timestamps for Analytics & SLA Tracking
+  @Column({ type: 'timestamp', nullable: true })
+  confirmedAt: Date; // When restaurant/system confirmed order
+
+  @Column({ type: 'timestamp', nullable: true })
+  preparingAt: Date; // When restaurant started preparing
+
+  @Column({ type: 'timestamp', nullable: true })
+  readyAt: Date; // When food/parcel marked ready for pickup
+
+  @Column({ type: 'timestamp', nullable: true })
+  assignedAt: Date; // When courier accepted the job
+
+  @Column({ type: 'timestamp', nullable: true })
+  pickedUpAt: Date; // When courier picked up from restaurant/sender
+
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredAt: Date; // When order was delivered to customer
+
+  @Column({ type: 'timestamp', nullable: true })
+  cancelledAt: Date; // If order was cancelled
+
+  @Column({ type: 'timestamp', nullable: true })
+  estimatedDeliveryTime: Date; // Expected delivery time shown to customer
 }

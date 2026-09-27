@@ -105,6 +105,7 @@ export class PaymentsController {
         if (order.paymentStatus !== 'paid') {
           order.paymentStatus = 'paid';
           order.status = 'confirmed';
+          order.confirmedAt = new Date(); // Track when payment confirmed
           await this.ordersService.updateOrder(order);
           this.logger.log(`✅ Payment confirmed and order ${order.id} updated via polling`);
         } else {

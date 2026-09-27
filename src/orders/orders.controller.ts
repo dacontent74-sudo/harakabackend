@@ -129,6 +129,35 @@ export class OrdersController {
 
       const oldStatus = order.status;
       order.status = body.status;
+
+      // ⏰ SET TIMESTAMPS for order lifecycle tracking
+      const now = new Date();
+      switch (body.status) {
+        case 'confirmed':
+          if (!order.confirmedAt) order.confirmedAt = now;
+          break;
+        case 'preparing':
+          if (!order.preparingAt) order.preparingAt = now;
+          break;
+        case 'ready':
+        case 'ready_for_pickup':
+          if (!order.readyAt) order.readyAt = now;
+          break;
+        case 'assigned':
+          if (!order.assignedAt) order.assignedAt = now;
+          break;
+        case 'picked_up':
+        case 'in_transit':
+          if (!order.pickedUpAt) order.pickedUpAt = now;
+          break;
+        case 'delivered':
+          if (!order.deliveredAt) order.deliveredAt = now;
+          break;
+        case 'cancelled':
+          if (!order.cancelledAt) order.cancelledAt = now;
+          break;
+      }
+
       await this.ordersService.updateOrder(order);
 
       this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${body.status}`);

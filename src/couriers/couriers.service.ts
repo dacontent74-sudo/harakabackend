@@ -166,6 +166,7 @@ export class CouriersService {
     order.courierName = courier.fullName || courier.phoneNumber || 'Courier';
     order.courierPhone = courier.phoneNumber || '';
     order.status = 'assigned';
+    order.assignedAt = new Date(); // Track when courier accepted job
     await this.orderRepository.save(order);
 
     // Mark courier as busy
