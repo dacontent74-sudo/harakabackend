@@ -163,7 +163,7 @@ export class CouriersService {
 
     // Assign courier to order
     order.courierId = courierId;
-    order.courierName = courier.fullName || courier.phoneNumber || 'Courier';
+    order.courierName = courier.name || courier.phoneNumber || 'Courier';
     order.courierPhone = courier.phoneNumber || '';
     order.status = 'assigned';
     order.assignedAt = new Date(); // Track when courier accepted job
