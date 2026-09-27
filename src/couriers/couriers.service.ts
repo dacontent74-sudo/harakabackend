@@ -148,18 +148,25 @@ export class CouriersService {
       return { success: false, message: 'Order already assigned or completed' };
     }
 
-    order.courierId = courierId;
-    order.status = 'assigned';
-    await this.orderRepository.save(order);
-
+    // Get courier details
     const courier = await this.courierRepository.findOne({
       where: { id: courierId },
     });
 
-    if (courier) {
-      courier.status = 'busy';
-      await this.courierRepository.save(courier);
+    if (!courier) {
+      return { success: false, message: 'Courier not found' };
     }
+
+    // Assign courier to order
+    order.courierId = courierId;
+    order.courierName = courier.fullName || courier.phoneNumber || 'Courier';
+    order.courierPhone = courier.phoneNumber || '';
+    order.status = 'assigned';
+    await this.orderRepository.save(order);
+
+    // Mark courier as busy
+    courier.status = 'busy';
+    await this.courierRepository.save(courier);
 
     return { success: true, order };
   }

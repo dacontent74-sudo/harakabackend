@@ -98,6 +98,9 @@ export class Order {
   @Column({ nullable: true })
   courierName: string;
 
+  @Column({ nullable: true })
+  courierPhone: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   courierLatitude: number;
 
