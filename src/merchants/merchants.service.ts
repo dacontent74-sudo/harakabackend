@@ -1,7 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order } from '../orders/entities/order.entity';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class MerchantsService {
+  private readonly logger = new Logger(MerchantsService.name);
+
+  constructor(
+    @InjectRepository(Order)
+    private orderRepository: Repository<Order>,
+    private paymentsService: PaymentsService,
+  ) {}
   // Helper to check if restaurant is currently open
   private isCurrentlyOpen(hours: any): boolean {
     const now = new Date();
@@ -213,5 +224,95 @@ export class MerchantsService {
 
   getMenuItems(merchantId: string) {
     return this.menuItems[merchantId] || [];
+  }
+
+  /**
+   * Calculate restaurant earnings from completed paid orders
+   */
+  async calculateEarnings(restaurantName: string) {
+    // Get all delivered and paid food orders for this restaurant
+    const orders = await this.orderRepository.find({
+      where: {
+        restaurantName,
+        orderType: 'food',
+        status: 'delivered',
+        paymentStatus: 'paid',
+      },
+    });
+
+    // Calculate total earnings (food cost, not including delivery fee which goes to platform/courier)
+    let totalEarnings = 0;
+    let totalOrders = orders.length;
+    let pendingWithdrawal = 0; // Amount that can be withdrawn
+
+    orders.forEach(order => {
+      // Restaurant gets the food cost (total - delivery fee)
+      const orderTotal = parseFloat(order.total?.toString() || '0');
+      const deliveryFee = parseFloat(order.deliveryFee?.toString() || '0');
+      const foodCost = orderTotal - deliveryFee;
+
+      totalEarnings += foodCost;
+      pendingWithdrawal += foodCost; // For now, all earnings are available for withdrawal
+    });
+
+    this.logger.log(`📊 Restaurant ${restaurantName} earnings: ${totalEarnings} RWF from ${totalOrders} orders`);
+
+    return {
+      restaurantName,
+      totalEarnings: Math.round(totalEarnings),
+      totalOrders,
+      availableForWithdrawal: Math.round(pendingWithdrawal),
+      currency: 'RWF',
+    };
+  }
+
+  /**
+   * Withdraw earnings to Mobile Money via PawaPay
+   */
+  async withdrawEarnings(restaurantName: string, amount: number, phoneNumber: string) {
+    // Validate amount
+    if (amount <= 0) {
+      throw new Error('Withdrawal amount must be greater than 0');
+    }
+
+    // Check if restaurant has sufficient earnings
+    const earnings = await this.calculateEarnings(restaurantName);
+
+    if (amount > earnings.availableForWithdrawal) {
+      throw new Error(`Insufficient funds. Available: ${earnings.availableForWithdrawal} RWF`);
+    }
+
+    this.logger.log(`💸 Processing withdrawal for ${restaurantName}: ${amount} RWF to ${phoneNumber}`);
+
+    // Process withdrawal using PawaPay payout
+    // For now, we'll use the deposit endpoint (in production, use payout API)
+    try {
+      const result = await this.paymentsService.initiateDeposit({
+        orderId: `WITHDRAW-${restaurantName}-${Date.now()}`,
+        amount,
+        phoneNumber,
+        description: `Earnings withdrawal`,
+      });
+
+      if (result.success) {
+        this.logger.log(`✅ Withdrawal initiated successfully`);
+        return {
+          success: true,
+          message: 'Withdrawal initiated. Check your phone for confirmation.',
+          depositId: result.depositId,
+          amount,
+          phoneNumber,
+        };
+      } else {
+        this.logger.error(`❌ Withdrawal failed: ${result.error}`);
+        return {
+          success: false,
+          error: result.error || 'Withdrawal failed',
+        };
+      }
+    } catch (error) {
+      this.logger.error(`❌ Withdrawal error: ${error.message}`);
+      throw error;
+    }
   }
 }

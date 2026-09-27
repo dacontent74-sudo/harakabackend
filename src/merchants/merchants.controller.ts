@@ -1,8 +1,10 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Logger } from '@nestjs/common';
 import { MerchantsService } from './merchants.service';
 
 @Controller('merchants')
 export class MerchantsController {
+  private readonly logger = new Logger(MerchantsController.name);
+
   constructor(private readonly merchantsService: MerchantsService) {}
 
   @Get()
@@ -29,5 +31,52 @@ export class MerchantsController {
       success: true,
       data: menu,
     };
+  }
+
+  /**
+   * Get restaurant earnings
+   */
+  @Get(':id/earnings')
+  async getEarnings(@Param('id') id: string) {
+    try {
+      const earnings = await this.merchantsService.calculateEarnings(id);
+      return {
+        success: true,
+        data: earnings,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting earnings: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Withdraw earnings to Mobile Money
+   */
+  @Post(':id/withdraw')
+  async withdrawEarnings(
+    @Param('id') id: string,
+    @Body() body: { amount: number; phoneNumber: string },
+  ) {
+    try {
+      this.logger.log(`💰 Withdrawal request for restaurant ${id}: ${body.amount} RWF to ${body.phoneNumber}`);
+
+      const result = await this.merchantsService.withdrawEarnings(
+        id,
+        body.amount,
+        body.phoneNumber,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error processing withdrawal: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   }
 }
