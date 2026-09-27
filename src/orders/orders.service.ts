@@ -36,22 +36,23 @@ export class OrdersService {
     console.log('📦 Creating pending order');
     console.log('📥 Received DTO:', JSON.stringify(dto, null, 2));
 
-    // Validate pickup coordinates exist (required for parcel orders)
-    if (!dto.pickupLatitude || !dto.pickupLongitude) {
-      throw new Error('Pickup GPS coordinates are required. Please enable location in your device.');
-    }
+    // Note: Pickup coordinates are optional for pending orders
+    // They will be added when sender selects pickup location later
+    // For now, we just need sender/recipient info to generate the link
 
     const order = this.orderRepository.create({
       id: orderId,
       ...dto,
       status: 'awaiting_recipient_location',
       shareableLink: `https://harakabackend.onrender.com/select-location/${orderId}`,
+      orderType: 'parcel', // Ensure it's marked as parcel
     });
 
     const savedOrder = await this.orderRepository.save(order);
 
-    console.log('✅ Order saved to database');
-    console.log('🔍 Saved order:', JSON.stringify(savedOrder, null, 2));
+    console.log('✅ Pending order created successfully');
+    console.log('🔗 Shareable link:', savedOrder.shareableLink);
+    console.log('📋 Order ID:', savedOrder.id);
 
     return savedOrder;
   }
