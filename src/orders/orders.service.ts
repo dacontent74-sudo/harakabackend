@@ -125,10 +125,15 @@ export class OrdersService {
       }
     }
 
+    // 📦 PARCEL orders skip restaurant and go directly to courier
+    // 🍔 FOOD orders go through restaurant first
+    const initialStatus = isFood ? 'pending' : 'ready_for_pickup';
+
     const order = this.orderRepository.create({
       id: orderId,
       ...orderData,
-      status: 'confirmed',
+      status: initialStatus,
+      orderType: isFood ? 'food' : 'parcel',
       pickupLatitude: pickupLat,
       pickupLongitude: pickupLng,
       pickupAddress: pickupAddr,

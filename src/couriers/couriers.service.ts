@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Courier } from './entities/courier.entity';
 import { Order } from '../orders/entities/order.entity';
 import * as bcrypt from 'bcrypt';
@@ -84,9 +84,11 @@ export class CouriersService {
   }
 
   async getAvailableJobs() {
-    // ONLY show jobs that are READY for pickup (restaurant marked them ready)
+    // Show jobs that are ready for courier pickup:
+    // - 'ready': Food orders that restaurant marked as ready
+    // - 'ready_for_pickup': Parcel orders that skip restaurant and go directly to courier
     const jobs = await this.orderRepository.find({
-      where: { status: 'ready' },
+      where: { status: In(['ready', 'ready_for_pickup']) },
       order: { createdAt: 'DESC' },
       take: 20,
     });

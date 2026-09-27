@@ -59,17 +59,28 @@ export class OrdersController {
   async createOrder(@Body() orderData: any) {
     const createdOrder = await this.ordersService.createOrder(orderData);
 
-    // 📱 SMS NOTIFICATION: Order Created (only if order created with 'pending' status)
+    // 📱 SMS NOTIFICATION: Order Created
     if (createdOrder) {
       const customerPhone = createdOrder.senderPhone || createdOrder.recipientPhone || createdOrder.customerPhone;
       const customerName = createdOrder.senderName || createdOrder.recipientName || 'Customer';
+      const isParcel = createdOrder.orderType === 'parcel' || createdOrder.status === 'ready_for_pickup';
 
-      if (customerPhone && createdOrder.status === 'pending') {
+      if (customerPhone) {
         this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
-          customerPhone,
-          `Hi ${customerName}! Your order #${createdOrder.id.substring(0, 8).toUpperCase()} has been created successfully. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+
+        if (isParcel) {
+          // 📦 PARCEL: Goes directly to courier
+          this.smsService.sendCustomSms(
+            customerPhone,
+            `Hi ${customerName}! Your parcel delivery #${createdOrder.id.substring(0, 8).toUpperCase()} has been created. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF. ' : ''}A courier will be assigned shortly to pick up from your location. - Haraka Delivery`
+          ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        } else {
+          // 🍔 FOOD: Goes through restaurant
+          this.smsService.sendCustomSms(
+            customerPhone,
+            `Hi ${customerName}! Your order #${createdOrder.id.substring(0, 8).toUpperCase()} has been created successfully. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
+          ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        }
       }
     }
 
