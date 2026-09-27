@@ -144,8 +144,12 @@ export class CouriersService {
       return { success: false, message: 'Order not found' };
     }
 
-    if (order.status !== 'confirmed') {
-      return { success: false, message: 'Order already assigned or completed' };
+    // Accept jobs that are ready for courier pickup
+    if (!['ready', 'ready_for_pickup'].includes(order.status)) {
+      return {
+        success: false,
+        message: `Order not available for pickup. Current status: ${order.status}`
+      };
     }
 
     // Get courier details
