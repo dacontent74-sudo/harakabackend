@@ -37,7 +37,7 @@ async function bootstrap() {
   console.log(`📡 Server: http://localhost:${port}`);
   console.log(`📋 API: http://localhost:${port}/api/v1`);
   console.log(`🌐 Network: http://192.168.1.81:${port}/api/v1`);
-  console.log('🔐 Auth: http://localhost:${port}/api/v1/auth`);
+  console.log(`🔐 Auth: http://localhost:${port}/api/v1/auth`);
   console.log('');
 }
 
