@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from '../orders/entities/order.entity';
+import { Merchant } from './entities/merchant.entity';
+import { MenuItem } from './entities/menu-item.entity';
 import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
@@ -11,10 +13,17 @@ export class MerchantsService {
   constructor(
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    @InjectRepository(Merchant)
+    private merchantRepository: Repository<Merchant>,
+    @InjectRepository(MenuItem)
+    private menuItemRepository: Repository<MenuItem>,
     private paymentsService: PaymentsService,
   ) {}
+
   // Helper to check if restaurant is currently open
   private isCurrentlyOpen(hours: any): boolean {
+    if (!hours) return false;
+
     const now = new Date();
     const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
     const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
@@ -35,6 +44,8 @@ export class MerchantsService {
 
   // Helper to get next opening time
   private getNextOpeningTime(hours: any): string {
+    if (!hours) return 'Opens soon';
+
     const now = new Date();
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const currentDay = days[now.getDay()];
@@ -63,149 +74,9 @@ export class MerchantsService {
     return 'Opens soon';
   }
 
-  private merchants = [
-    {
-      id: '1',
-      name: 'Bourbon Coffee',
-      category: 'Coffee & Cafe',
-      rating: 4.8,
-      deliveryTime: '15-25 min',
-      deliveryFee: 500,
-      prepTime: 15, // minutes to prepare food
-      image: 'https://via.placeholder.com/300x200/FF6B00/FFFFFF?text=Bourbon+Coffee',
-      cuisine: ['Coffee', 'Pastries', 'Breakfast'],
-      location: 'Kimihurura, Kigali',
-      coordinates: { lat: -1.9536, lng: 30.0910 }, // for distance calculation
-      hours: {
-        monday: { open: '07:00', close: '20:00' },
-        tuesday: { open: '07:00', close: '20:00' },
-        wednesday: { open: '07:00', close: '20:00' },
-        thursday: { open: '07:00', close: '20:00' },
-        friday: { open: '07:00', close: '22:00' },
-        saturday: { open: '08:00', close: '22:00' },
-        sunday: { open: '08:00', close: '20:00' },
-      },
-    },
-    {
-      id: '2',
-      name: 'Heaven Restaurant',
-      category: 'Fine Dining',
-      rating: 4.7,
-      deliveryTime: '30-40 min',
-      deliveryFee: 800,
-      prepTime: 25,
-      image: 'https://via.placeholder.com/300x200/FF6B00/FFFFFF?text=Heaven+Restaurant',
-      cuisine: ['International', 'Local', 'Grill'],
-      location: 'Kacyiru, Kigali',
-      coordinates: { lat: -1.9442, lng: 30.0619 },
-      hours: {
-        monday: { open: '11:00', close: '22:00' },
-        tuesday: { open: '11:00', close: '22:00' },
-        wednesday: { open: '11:00', close: '22:00' },
-        thursday: { open: '11:00', close: '22:00' },
-        friday: { open: '11:00', close: '23:00' },
-        saturday: { open: '11:00', close: '23:00' },
-        sunday: { open: '12:00', close: '21:00' },
-      },
-    },
-    {
-      id: '3',
-      name: 'Repub Lounge',
-      category: 'Bar & Grill',
-      rating: 4.6,
-      deliveryTime: '25-35 min',
-      deliveryFee: 600,
-      prepTime: 20,
-      image: 'https://via.placeholder.com/300x200/FF6B00/FFFFFF?text=Repub+Lounge',
-      cuisine: ['Burgers', 'Pizza', 'Drinks'],
-      location: 'Nyarutarama, Kigali',
-      coordinates: { lat: -1.9367, lng: 30.1177 },
-      hours: {
-        monday: { open: '10:00', close: '23:00' },
-        tuesday: { open: '10:00', close: '23:00' },
-        wednesday: { open: '10:00', close: '23:00' },
-        thursday: { open: '10:00', close: '23:00' },
-        friday: { open: '10:00', close: '00:00' },
-        saturday: { open: '10:00', close: '00:00' },
-        sunday: { open: '10:00', close: '22:00' },
-      },
-    },
-    {
-      id: '4',
-      name: 'Poivre Noir',
-      category: 'French Cuisine',
-      rating: 4.9,
-      deliveryTime: '35-45 min',
-      deliveryFee: 1000,
-      prepTime: 30,
-      image: 'https://via.placeholder.com/300x200/FF6B00/FFFFFF?text=Poivre+Noir',
-      cuisine: ['French', 'Fine Dining', 'Wine'],
-      location: 'Kiyovu, Kigali',
-      coordinates: { lat: -1.9590, lng: 30.0535 },
-      hours: {
-        monday: { open: '12:00', close: '22:00' },
-        tuesday: { open: '12:00', close: '22:00' },
-        wednesday: { open: '12:00', close: '22:00' },
-        thursday: { open: '12:00', close: '22:00' },
-        friday: { open: '12:00', close: '23:00' },
-        saturday: { open: '12:00', close: '23:00' },
-        sunday: null, // Closed on Sundays
-      },
-    },
-    {
-      id: '5',
-      name: 'Meze Fresh',
-      category: 'Healthy Food',
-      rating: 4.5,
-      deliveryTime: '20-30 min',
-      deliveryFee: 500,
-      prepTime: 15,
-      image: 'https://via.placeholder.com/300x200/FF6B00/FFFFFF?text=Meze+Fresh',
-      cuisine: ['Salads', 'Smoothies', 'Healthy'],
-      location: 'Kimihurura, Kigali',
-      coordinates: { lat: -1.9536, lng: 30.0910 },
-      hours: {
-        monday: { open: '08:00', close: '20:00' },
-        tuesday: { open: '08:00', close: '20:00' },
-        wednesday: { open: '08:00', close: '20:00' },
-        thursday: { open: '08:00', close: '20:00' },
-        friday: { open: '08:00', close: '20:00' },
-        saturday: { open: '09:00', close: '18:00' },
-        sunday: { open: '09:00', close: '18:00' },
-      },
-    },
-  ];
-
-  private menuItems = {
-    '1': [
-      { id: '1', name: 'Cappuccino', price: 3000, category: 'Coffee', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Cappuccino' },
-      { id: '2', name: 'Croissant', price: 2000, category: 'Pastry', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Croissant' },
-      { id: '3', name: 'Breakfast Combo', price: 5500, category: 'Breakfast', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Breakfast' },
-    ],
-    '2': [
-      { id: '4', name: 'Grilled Tilapia', price: 8000, category: 'Main', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Tilapia' },
-      { id: '5', name: 'Beef Brochettes', price: 7000, category: 'Main', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Brochettes' },
-      { id: '6', name: 'Vegetable Salad', price: 3500, category: 'Sides', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Salad' },
-    ],
-    '3': [
-      { id: '7', name: 'Classic Burger', price: 6000, category: 'Burger', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Burger' },
-      { id: '8', name: 'Margherita Pizza', price: 8500, category: 'Pizza', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Pizza' },
-      { id: '9', name: 'French Fries', price: 2500, category: 'Sides', image: 'https://via.placeholder.com/150/FF6B00/FFFFFF?text=Fries' },
-    ],
-  };
-
-  getAllMerchants() {
-    // Add dynamic isOpen and nextOpenTime to each merchant
-    return this.merchants.map(merchant => ({
-      ...merchant,
-      isOpen: this.isCurrentlyOpen(merchant.hours),
-      openingStatus: this.isCurrentlyOpen(merchant.hours)
-        ? `Open until ${this.getClosingTime(merchant.hours)}`
-        : this.getNextOpeningTime(merchant.hours),
-    }));
-  }
-
   private getClosingTime(hours: any): string {
+    if (!hours) return 'later';
+
     const now = new Date();
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const currentDay = days[now.getDay()];
@@ -218,16 +89,193 @@ export class MerchantsService {
     return 'later';
   }
 
-  getMerchantById(id: string) {
-    return this.merchants.find(m => m.id === id);
-  }
+  /**
+   * 📋 GET ALL MERCHANTS (from database, not hardcoded)
+   */
+  async getAllMerchants() {
+    const merchants = await this.merchantRepository.find({
+      where: { isActive: true },
+      order: { rating: 'DESC' },
+    });
 
-  getMenuItems(merchantId: string) {
-    return this.menuItems[merchantId] || [];
+    // Add dynamic isOpen and nextOpenTime to each merchant
+    return merchants.map(merchant => ({
+      id: merchant.id.toString(),
+      name: merchant.name,
+      category: merchant.category,
+      rating: parseFloat(merchant.rating.toString()),
+      deliveryTime: merchant.deliveryTime,
+      deliveryFee: parseFloat(merchant.deliveryFee.toString()),
+      prepTime: merchant.prepTime,
+      image: merchant.image,
+      cuisine: merchant.cuisine || [],
+      location: merchant.location,
+      coordinates: merchant.latitude && merchant.longitude
+        ? { lat: parseFloat(merchant.latitude.toString()), lng: parseFloat(merchant.longitude.toString()) }
+        : null,
+      hours: merchant.hours,
+      isOpen: this.isCurrentlyOpen(merchant.hours),
+      openingStatus: this.isCurrentlyOpen(merchant.hours)
+        ? `Open until ${this.getClosingTime(merchant.hours)}`
+        : this.getNextOpeningTime(merchant.hours),
+      phone: merchant.phone,
+      email: merchant.email,
+      description: merchant.description,
+      isVerified: merchant.isVerified,
+    }));
   }
 
   /**
-   * Calculate restaurant earnings from completed paid orders
+   * 🔍 GET MERCHANT BY ID
+   */
+  async getMerchantById(id: string) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: parseInt(id), isActive: true }
+    });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${id} not found`);
+    }
+
+    return {
+      id: merchant.id.toString(),
+      name: merchant.name,
+      category: merchant.category,
+      rating: parseFloat(merchant.rating.toString()),
+      deliveryTime: merchant.deliveryTime,
+      deliveryFee: parseFloat(merchant.deliveryFee.toString()),
+      prepTime: merchant.prepTime,
+      image: merchant.image,
+      cuisine: merchant.cuisine || [],
+      location: merchant.location,
+      coordinates: merchant.latitude && merchant.longitude
+        ? { lat: parseFloat(merchant.latitude.toString()), lng: parseFloat(merchant.longitude.toString()) }
+        : null,
+      hours: merchant.hours,
+      phone: merchant.phone,
+      email: merchant.email,
+      description: merchant.description,
+      isVerified: merchant.isVerified,
+    };
+  }
+
+  /**
+   * 🍔 GET MENU ITEMS FOR A MERCHANT
+   */
+  async getMenuItems(merchantId: string) {
+    const menuItems = await this.menuItemRepository.find({
+      where: { merchantId: parseInt(merchantId) },
+      order: { category: 'ASC', name: 'ASC' },
+    });
+
+    return menuItems.map(item => ({
+      id: item.id.toString(),
+      name: item.name,
+      price: parseFloat(item.price.toString()),
+      category: item.category,
+      image: item.image,
+      description: item.description,
+      isAvailable: item.isAvailable,
+      isPopular: item.isPopular,
+      isVegetarian: item.isVegetarian,
+      isVegan: item.isVegan,
+      isSpicy: item.isSpicy,
+      preparationTime: item.preparationTime,
+      allergens: item.allergens || [],
+    }));
+  }
+
+  /**
+   * ➕ CREATE NEW MERCHANT (Admin only)
+   */
+  async createMerchant(data: Partial<Merchant>) {
+    const merchant = this.merchantRepository.create(data);
+    const saved = await this.merchantRepository.save(merchant);
+
+    this.logger.log(`✅ Created merchant: ${saved.name} (ID: ${saved.id})`);
+    return saved;
+  }
+
+  /**
+   * ✏️ UPDATE MERCHANT
+   */
+  async updateMerchant(id: number, data: Partial<Merchant>) {
+    const merchant = await this.merchantRepository.findOne({ where: { id } });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${id} not found`);
+    }
+
+    Object.assign(merchant, data);
+    const updated = await this.merchantRepository.save(merchant);
+
+    this.logger.log(`✅ Updated merchant: ${updated.name} (ID: ${updated.id})`);
+    return updated;
+  }
+
+  /**
+   * 🗑️ DELETE MERCHANT (soft delete - sets isActive to false)
+   */
+  async deleteMerchant(id: number) {
+    const merchant = await this.merchantRepository.findOne({ where: { id } });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${id} not found`);
+    }
+
+    merchant.isActive = false;
+    await this.merchantRepository.save(merchant);
+
+    this.logger.log(`🗑️ Deactivated merchant: ${merchant.name} (ID: ${merchant.id})`);
+    return { success: true, message: 'Merchant deactivated' };
+  }
+
+  /**
+   * ➕ CREATE MENU ITEM
+   */
+  async createMenuItem(data: Partial<MenuItem>) {
+    const menuItem = this.menuItemRepository.create(data);
+    const saved = await this.menuItemRepository.save(menuItem);
+
+    this.logger.log(`✅ Created menu item: ${saved.name} (ID: ${saved.id})`);
+    return saved;
+  }
+
+  /**
+   * ✏️ UPDATE MENU ITEM
+   */
+  async updateMenuItem(id: number, data: Partial<MenuItem>) {
+    const menuItem = await this.menuItemRepository.findOne({ where: { id } });
+
+    if (!menuItem) {
+      throw new NotFoundException(`Menu item with ID ${id} not found`);
+    }
+
+    Object.assign(menuItem, data);
+    const updated = await this.menuItemRepository.save(menuItem);
+
+    this.logger.log(`✅ Updated menu item: ${updated.name} (ID: ${updated.id})`);
+    return updated;
+  }
+
+  /**
+   * 🗑️ DELETE MENU ITEM
+   */
+  async deleteMenuItem(id: number) {
+    const menuItem = await this.menuItemRepository.findOne({ where: { id } });
+
+    if (!menuItem) {
+      throw new NotFoundException(`Menu item with ID ${id} not found`);
+    }
+
+    await this.menuItemRepository.remove(menuItem);
+
+    this.logger.log(`🗑️ Deleted menu item: ${menuItem.name} (ID: ${menuItem.id})`);
+    return { success: true, message: 'Menu item deleted' };
+  }
+
+  /**
+   * 📊 Calculate restaurant earnings from completed paid orders
    */
   async calculateEarnings(restaurantName: string) {
     // Get all delivered and paid food orders for this restaurant
@@ -267,7 +315,7 @@ export class MerchantsService {
   }
 
   /**
-   * Withdraw earnings to Mobile Money via PawaPay
+   * 💸 Withdraw earnings to Mobile Money via PawaPay
    */
   async withdrawEarnings(restaurantName: string, amount: number, phoneNumber: string) {
     // Validate amount
@@ -285,7 +333,6 @@ export class MerchantsService {
     this.logger.log(`💸 Processing withdrawal for ${restaurantName}: ${amount} RWF to ${phoneNumber}`);
 
     // Process withdrawal using PawaPay payout
-    // For now, we'll use the deposit endpoint (in production, use payout API)
     try {
       const result = await this.paymentsService.initiateDeposit({
         orderId: `WITHDRAW-${restaurantName}-${Date.now()}`,

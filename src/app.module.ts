@@ -9,6 +9,8 @@ import { CouriersModule } from './couriers/couriers.module';
 import { AppController } from './app.controller';
 import { Order } from './orders/entities/order.entity';
 import { Courier } from './couriers/entities/courier.entity';
+import { Merchant } from './merchants/entities/merchant.entity';
+import { MenuItem } from './merchants/entities/menu-item.entity';
 
 @Module({
   imports: [
@@ -18,7 +20,7 @@ import { Courier } from './couriers/entities/courier.entity';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [Order, Courier],
+      entities: [Order, Courier, Merchant, MenuItem],
       synchronize: true, // Auto-create tables (use migrations in production later)
       ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
     }),
