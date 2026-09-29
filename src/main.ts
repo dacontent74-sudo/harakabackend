@@ -3,6 +3,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { AuthService } from './auth/auth.service';
 
+// Haraka Backend API - Production Ready (2026-09-29)
+// Features: Food ordering, Parcel delivery, Payment integration, Distance-based pricing
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
