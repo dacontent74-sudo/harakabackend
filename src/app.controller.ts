@@ -20,6 +20,14 @@ export class AppController {
     res.sendFile(join(__dirname, '..', 'public', 'select-location.html'));
   }
 
+  @Get('location/:orderId')
+  serveLocationPage(
+    @Param('orderId') orderId: string,
+    @Res() res: Response,
+  ) {
+    res.sendFile(join(__dirname, '..', 'public', 'location.html'));
+  }
+
   @Post('seed')
   async seedDatabase() {
     try {
