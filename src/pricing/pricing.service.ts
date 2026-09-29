@@ -4,8 +4,8 @@ import { Injectable } from '@nestjs/common';
 export class PricingService {
   calculateDeliveryFee(distance: number, vehicleType: 'motorcycle' | 'car') {
     const config = vehicleType === 'car'
-      ? { base: 1000, tier1: 300, tier2: 250, tier3: 200 }
-      : { base: 500, tier1: 200, tier2: 150, tier3: 100 };
+      ? { base: 1200, tier1: 350, tier2: 300, tier3: 250 }
+      : { base: 800, tier1: 250, tier2: 200, tier3: 150 };
 
     let totalFee = config.base;
     let remaining = distance;
