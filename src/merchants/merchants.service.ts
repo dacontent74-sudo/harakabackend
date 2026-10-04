@@ -375,4 +375,113 @@ export class MerchantsService {
       throw error;
     }
   }
+
+  /**
+   * 📍 GENERATE LOCATION CONFIRMATION TOKEN
+   * Creates a unique token and expiry time for location confirmation
+   */
+  async generateLocationToken(merchantId: number) {
+    const merchant = await this.merchantRepository.findOne({ where: { id: merchantId } });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${merchantId} not found`);
+    }
+
+    // Generate random token (UUID-like)
+    const token = require('uuid').v4();
+
+    // Set expiry to 24 hours from now
+    const expiry = new Date();
+    expiry.setHours(expiry.getHours() + 24);
+
+    // Update merchant with token
+    merchant.locationToken = token;
+    merchant.locationTokenExpiry = expiry;
+    await this.merchantRepository.save(merchant);
+
+    this.logger.log(`📍 Generated location token for ${merchant.name} (ID: ${merchantId})`);
+
+    return {
+      token,
+      expiry,
+      merchantId,
+      merchantName: merchant.name,
+      merchantPhone: merchant.phone,
+      merchantEmail: merchant.email,
+    };
+  }
+
+  /**
+   * ✅ CONFIRM LOCATION FROM TOKEN
+   * Updates merchant's GPS coordinates when they confirm via link
+   */
+  async confirmLocation(token: string, latitude: number, longitude: number) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { locationToken: token },
+    });
+
+    if (!merchant) {
+      return {
+        success: false,
+        error: 'Invalid or expired confirmation link',
+      };
+    }
+
+    // Check if token has expired
+    const now = new Date();
+    if (merchant.locationTokenExpiry && now > merchant.locationTokenExpiry) {
+      return {
+        success: false,
+        error: 'Confirmation link has expired. Please request a new one.',
+      };
+    }
+
+    // Update location
+    merchant.latitude = latitude;
+    merchant.longitude = longitude;
+    merchant.locationConfirmed = true;
+    merchant.locationToken = null; // Clear token after use
+    merchant.locationTokenExpiry = null;
+
+    await this.merchantRepository.save(merchant);
+
+    this.logger.log(`✅ Location confirmed for ${merchant.name}: ${latitude}, ${longitude}`);
+
+    return {
+      success: true,
+      message: 'Location confirmed successfully!',
+      merchant: {
+        id: merchant.id,
+        name: merchant.name,
+        latitude: merchant.latitude,
+        longitude: merchant.longitude,
+      },
+    };
+  }
+
+  /**
+   * 📍 GET LOCATION TOKEN STATUS
+   * Check if a merchant has a pending location confirmation
+   */
+  async getLocationTokenStatus(merchantId: number) {
+    const merchant = await this.merchantRepository.findOne({
+      where: { id: merchantId },
+      select: ['id', 'name', 'locationToken', 'locationTokenExpiry', 'locationConfirmed', 'latitude', 'longitude'],
+    });
+
+    if (!merchant) {
+      throw new NotFoundException(`Merchant with ID ${merchantId} not found`);
+    }
+
+    const hasToken = !!merchant.locationToken;
+    const isExpired = merchant.locationTokenExpiry && new Date() > merchant.locationTokenExpiry;
+
+    return {
+      hasToken,
+      isExpired,
+      locationConfirmed: merchant.locationConfirmed,
+      hasCoordinates: !!merchant.latitude && !!merchant.longitude,
+      tokenExpiry: merchant.locationTokenExpiry,
+    };
+  }
 }

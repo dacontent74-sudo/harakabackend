@@ -57,6 +57,15 @@ export class Merchant {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ nullable: true })
+  locationToken: string; // Token for location confirmation link
+
+  @Column({ type: 'timestamp', nullable: true })
+  locationTokenExpiry: Date; // Token expiration time
+
+  @Column({ default: false })
+  locationConfirmed: boolean; // Whether location has been confirmed via link
+
   @OneToMany(() => MenuItem, menuItem => menuItem.merchant)
   menuItems: MenuItem[];
 

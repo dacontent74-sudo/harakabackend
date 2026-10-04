@@ -340,4 +340,102 @@ export class EmailService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Send location confirmation link to restaurant owner
+   */
+  async sendLocationConfirmationEmail(data: {
+    to: string;
+    restaurantName: string;
+    confirmationLink: string;
+    expiryHours?: number;
+  }) {
+    try {
+      const { to, restaurantName, confirmationLink, expiryHours = 24 } = data;
+
+      const mailOptions = {
+        from: `"Haraka Delivery" <${process.env.EMAIL_USER}>`,
+        to: to,
+        subject: '📍 Confirm Your Restaurant Location - Haraka Delivery',
+        html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%); color: white; padding: 30px; text-align: center; }
+    .content { padding: 30px; }
+    .button { display: inline-block; background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
+    .info-box { background-color: #fff8f0; border-left: 4px solid #FF6B00; padding: 20px; margin: 20px 0; border-radius: 6px; }
+    .footer { background-color: #f9f9f9; padding: 20px; text-align: center; color: #777; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📍 Confirm Your Location</h1>
+    </div>
+    <div class="content">
+      <p>Dear <strong>${restaurantName}</strong> Team,</p>
+      <p>Welcome to Haraka Delivery! To ensure accurate delivery calculations, we need to confirm your restaurant's exact GPS location.</p>
+
+      <div class="info-box">
+        <h3 style="color: #FF6B00; margin-top: 0;">🎯 Why This Matters</h3>
+        <p style="margin: 8px 0; color: #555;">
+          Your GPS coordinates are used to:
+        </p>
+        <ul style="margin: 8px 0 0 20px; color: #555;">
+          <li>Calculate delivery distances accurately</li>
+          <li>Determine fair delivery fees</li>
+          <li>Match you with nearby couriers</li>
+          <li>Show your restaurant to customers in your area</li>
+        </ul>
+      </div>
+
+      <p><strong>📱 How to Confirm:</strong></p>
+      <ol style="line-height: 1.8; color: #555;">
+        <li>Go to your restaurant location (must be physically there)</li>
+        <li>Click the button below from your phone or computer</li>
+        <li>Allow location access when prompted</li>
+        <li>Confirm your GPS coordinates</li>
+      </ol>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${confirmationLink}" class="button" style="color: white;">
+          📍 Confirm My Location
+        </a>
+      </div>
+
+      <div style="background-color: #FEF2F2; border-left: 4px solid #DC2626; padding: 15px; margin: 20px 0; border-radius: 6px;">
+        <p style="margin: 0; color: #991B1B; font-size: 13px;">
+          <strong>⚠️ Important:</strong> This link expires in ${expiryHours} hours. You must be physically at your restaurant location when confirming.
+        </p>
+      </div>
+
+      <p style="color: #777; font-size: 13px; margin-top: 30px;">
+        If the button doesn't work, copy and paste this link into your browser:<br/>
+        <a href="${confirmationLink}" style="color: #FF6B00; word-break: break-all;">${confirmationLink}</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p><strong>Haraka Delivery</strong> - Fast, Reliable, Delicious</p>
+      <p style="margin-top: 10px;">Need help? Contact support at ${process.env.EMAIL_USER}</p>
+    </div>
+  </div>
+</body>
+</html>
+        `,
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`✅ Location confirmation email sent to ${to}: ${info.messageId}`);
+
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      this.logger.error(`❌ Failed to send location confirmation email: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
 }

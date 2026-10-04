@@ -1,11 +1,15 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Logger } from '@nestjs/common';
 import { MerchantsService } from './merchants.service';
+import { EmailService } from '../notifications/email.service';
 
 @Controller('merchants')
 export class MerchantsController {
   private readonly logger = new Logger(MerchantsController.name);
 
-  constructor(private readonly merchantsService: MerchantsService) {}
+  constructor(
+    private readonly merchantsService: MerchantsService,
+    private readonly emailService: EmailService,
+  ) {}
 
   @Get()
   async getAllMerchants() {
@@ -180,6 +184,105 @@ export class MerchantsController {
       return result;
     } catch (error) {
       this.logger.error(`Error processing withdrawal: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 📍 Generate location confirmation link
+   * Admin endpoint to send location confirmation link to restaurant
+   */
+  @Post(':id/location/send-link')
+  async sendLocationLink(@Param('id') id: string) {
+    try {
+      this.logger.log(`📍 Generating location confirmation link for merchant ${id}`);
+
+      const tokenData = await this.merchantsService.generateLocationToken(parseInt(id));
+
+      const confirmationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/confirm-location?token=${tokenData.token}`;
+
+      // Send email if restaurant has email
+      if (tokenData.merchantEmail) {
+        try {
+          await this.emailService.sendLocationConfirmationEmail({
+            to: tokenData.merchantEmail,
+            restaurantName: tokenData.merchantName,
+            confirmationLink,
+            expiryHours: 24,
+          });
+          this.logger.log(`✅ Location confirmation email sent to ${tokenData.merchantEmail}`);
+        } catch (emailError) {
+          this.logger.warn(`⚠️ Failed to send email: ${emailError.message}`);
+          // Continue even if email fails - admin can still share link manually
+        }
+      }
+
+      this.logger.log(`✅ Location link generated: ${confirmationLink}`);
+
+      return {
+        success: true,
+        message: tokenData.merchantEmail
+          ? 'Location confirmation link sent to restaurant email'
+          : 'Location confirmation link generated (no email on file - share manually)',
+        link: confirmationLink,
+        token: tokenData.token,
+        expiry: tokenData.expiry,
+        merchantName: tokenData.merchantName,
+        merchantPhone: tokenData.merchantPhone,
+        emailSent: !!tokenData.merchantEmail,
+      };
+    } catch (error) {
+      this.logger.error(`Error generating location link: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * ✅ Confirm location (PUBLIC endpoint - no auth required)
+   * Used by restaurant owners clicking the confirmation link
+   */
+  @Post('location/confirm')
+  async confirmLocation(
+    @Body() body: { token: string; latitude: number; longitude: number },
+  ) {
+    try {
+      this.logger.log(`📍 Location confirmation attempt with token: ${body.token.substring(0, 8)}...`);
+
+      const result = await this.merchantsService.confirmLocation(
+        body.token,
+        body.latitude,
+        body.longitude,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error confirming location: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 📍 Get location token status
+   * Check if merchant has pending location confirmation
+   */
+  @Get(':id/location/status')
+  async getLocationStatus(@Param('id') id: string) {
+    try {
+      const status = await this.merchantsService.getLocationTokenStatus(parseInt(id));
+      return {
+        success: true,
+        data: status,
+      };
+    } catch (error) {
       return {
         success: false,
         error: error.message,
