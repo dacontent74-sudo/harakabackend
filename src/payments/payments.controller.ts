@@ -247,6 +247,64 @@ export class PaymentsController {
   // https://harakabackend.onrender.com/api/v1/payments/webhooks/pawapay
 
   /**
+   * MANUAL payment confirmation - bypasses idempotency for stuck payments
+   * ADMIN ONLY - Use when webhook was received but order not updated
+   */
+  @Post('manual-confirm/:depositId')
+  async manualConfirm(@Param('depositId') depositId: string) {
+    this.logger.warn(`⚠️ MANUAL PAYMENT CONFIRMATION for depositId: ${depositId}`);
+
+    try {
+      // Find order by depositId
+      const order = await this.ordersService.getOrderByDepositId(depositId);
+
+      if (!order) {
+        this.logger.error(`❌ Order not found with depositId: ${depositId}`);
+        return { success: false, error: 'Order not found' };
+      }
+
+      this.logger.log(`📦 Found order: ${order.id}, current status: ${order.paymentStatus}`);
+
+      // Force update to paid (bypass idempotency)
+      if (order.paymentStatus !== 'paid') {
+        order.paymentStatus = 'paid';
+        order.status = 'confirmed';
+        order.confirmedAt = new Date();
+        await this.ordersService.updateOrder(order);
+        this.logger.log(`✅ MANUALLY confirmed payment for order ${order.id}`);
+
+        // Send SMS notification
+        const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
+        const customerName = order.senderName || order.recipientName || 'Customer';
+
+        if (customerPhone) {
+          this.smsService.sendCustomSms(
+            customerPhone,
+            `Hi ${customerName}! Payment confirmed! ✅ Your order #${order.id.substring(0, 8).toUpperCase()} has been confirmed. - Haraka Delivery`
+          ).catch(err => this.logger.error(`SMS failed: ${err.message}`));
+        }
+
+        return {
+          success: true,
+          message: 'Payment manually confirmed',
+          orderId: order.id,
+          orderStatus: order.status,
+          paymentStatus: order.paymentStatus,
+        };
+      } else {
+        return {
+          success: true,
+          message: 'Payment already confirmed',
+          orderId: order.id,
+        };
+      }
+    } catch (error) {
+      this.logger.error('❌ Manual confirmation error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Collect payment from receiver on delivery (for receiver-pays orders)
    * SECURITY: Amount comes from order in database, NOT from client request
    */
