@@ -86,36 +86,46 @@ export class PaymentsController {
 
   /**
    * Check payment status (used for polling)
+   * IMPROVED: Check database first (webhook is faster than API)
    */
   @Get('status/:depositId')
   async checkStatus(@Param('depositId') depositId: string) {
     this.logger.log(`📊 Checking payment status for depositId: ${depositId}`);
+
+    // 🚀 OPTIMIZATION: Check order in database FIRST (webhook updates it immediately)
+    const order = await this.ordersService.getOrderByDepositId(depositId);
+
+    if (order) {
+      this.logger.log(`📦 Order found: ${order.id}, paymentStatus: ${order.paymentStatus}`);
+
+      // If webhook already updated order to "paid", return COMPLETED immediately
+      if (order.paymentStatus === 'paid') {
+        this.logger.log(`✅ Order already PAID (via webhook) - returning COMPLETED`);
+        return {
+          success: true,
+          status: 'COMPLETED',
+          message: 'Payment confirmed',
+        };
+      }
+    }
+
+    // If not paid yet, check PawaPay API (fallback)
+    this.logger.log(`⏳ Order not paid yet - checking PawaPay API...`);
     const result = await this.paymentsService.checkDepositStatus(depositId);
 
-    // If payment completed, update order
+    // If PawaPay says COMPLETED, update order
     if (result.success && result.status === 'COMPLETED') {
-      this.logger.log(`✅ Payment COMPLETED for depositId: ${depositId}`);
+      this.logger.log(`✅ PawaPay says COMPLETED for depositId: ${depositId}`);
 
-      // Find order by depositId (depositId is a UUID, not orderId-timestamp)
-      const order = await this.ordersService.getOrderByDepositId(depositId);
-
-      if (order) {
-        this.logger.log(`✅ Found order: ${order.id}, current payment status: ${order.paymentStatus}`);
-
-        if (order.paymentStatus !== 'paid') {
-          order.paymentStatus = 'paid';
-          order.status = 'confirmed';
-          order.confirmedAt = new Date(); // Track when payment confirmed
-          await this.ordersService.updateOrder(order);
-          this.logger.log(`✅ Payment confirmed and order ${order.id} updated via polling`);
-        } else {
-          this.logger.log(`ℹ️ Order ${order.id} already marked as paid`);
-        }
-      } else {
-        this.logger.error(`❌ No order found with depositId: ${depositId}`);
+      if (order && order.paymentStatus !== 'paid') {
+        order.paymentStatus = 'paid';
+        order.status = 'confirmed';
+        order.confirmedAt = new Date();
+        await this.ordersService.updateOrder(order);
+        this.logger.log(`✅ Payment confirmed and order ${order.id} updated via polling`);
       }
     } else {
-      this.logger.log(`⏳ Payment status: ${result.status || 'unknown'}`);
+      this.logger.log(`⏳ Payment status from PawaPay: ${result.status || 'unknown'}`);
     }
 
     return result;
