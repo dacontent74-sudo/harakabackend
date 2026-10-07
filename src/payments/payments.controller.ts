@@ -187,9 +187,6 @@ export class PaymentsController {
         return { success: true, message: 'Already processed' };
       }
 
-      // Mark as processed BEFORE updating database
-      this.idempotencyService.markProcessed(depositId, status);
-
       if (status === 'COMPLETED') {
         // Find order by depositId
         const order = await this.ordersService.getOrderByDepositId(depositId);
@@ -200,6 +197,8 @@ export class PaymentsController {
           // Double-payment prevention
           if (order.paymentStatus === 'paid') {
             this.logger.warn(`⚠️ Order ${order.id} already marked as paid - potential double payment attempt`);
+            // Still mark as processed since order is already paid
+            this.idempotencyService.markProcessed(depositId, status);
             return { success: true, message: 'Already paid' };
           }
 
@@ -208,6 +207,9 @@ export class PaymentsController {
           order.status = 'confirmed';
           await this.ordersService.updateOrder(order);
           this.logger.log(`✅ Payment webhook: Order ${order.id} confirmed and marked as paid`);
+
+          // ✅ CRITICAL FIX: Mark as processed AFTER successful update
+          this.idempotencyService.markProcessed(depositId, status);
 
           // 📱 SMS NOTIFICATION: Payment Confirmed
           const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
@@ -233,7 +235,14 @@ export class PaymentsController {
           order.paymentStatus = 'failed';
           await this.ordersService.updateOrder(order);
           this.logger.log(`📝 Order ${order.id} marked as payment failed`);
+
+          // Mark as processed after successful update
+          this.idempotencyService.markProcessed(depositId, status);
         }
+      } else {
+        // Other statuses (SUBMITTED, ACCEPTED, etc.) - mark as processed
+        this.logger.log(`📝 Webhook status ${status} acknowledged`);
+        this.idempotencyService.markProcessed(depositId, status);
       }
 
       return { success: true };
