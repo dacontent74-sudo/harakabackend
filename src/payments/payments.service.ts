@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { validateAndNormalizePhone, validateAmount } from '../utils/validation';
 
 @Injectable()
 export class PaymentsService {
@@ -20,22 +21,17 @@ export class PaymentsService {
     try {
       const depositId = uuidv4(); // Generate proper 36-character UUID for PawaPay
 
-      // Determine correspondent based on phone number prefix
-      const correspondent = this.getCorrespondent(data.phoneNumber);
+      // ✅ SECURITY: Validate and normalize phone number
+      const normalizedPhone = validateAndNormalizePhone(data.phoneNumber);
 
-      // Parse amount (comes as string from database)
-      const amountNumber = typeof data.amount === 'string'
-        ? parseFloat(data.amount)
-        : data.amount;
+      // Determine correspondent based on phone number prefix
+      const correspondent = this.getCorrespondent(normalizedPhone);
+
+      // ✅ SECURITY: Validate amount
+      const validatedAmount = validateAmount(data.amount);
 
       // Round to whole number - Rwanda mobile money doesn't support decimals
-      const roundedAmount = Math.round(amountNumber);
-
-      // Normalize phone number: remove all non-digits, ensure 250 prefix
-      const cleanPhone = data.phoneNumber.replace(/\D/g, ''); // Remove +, spaces, etc
-      const normalizedPhone = cleanPhone.startsWith('250')
-        ? cleanPhone
-        : '250' + cleanPhone.replace(/^0/, '');
+      const roundedAmount = Math.round(validatedAmount);
 
       const payload = {
         depositId,

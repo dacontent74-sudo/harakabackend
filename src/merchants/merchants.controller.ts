@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Logger } from '@nestjs/common';
 import { MerchantsService } from './merchants.service';
 import { EmailService } from '../notifications/email.service';
+import { validateGPSCoordinates, validateAndNormalizePhone } from '../utils/validation';
 
 @Controller('merchants')
 export class MerchantsController {
@@ -51,6 +52,18 @@ export class MerchantsController {
   @Post()
   async createMerchant(@Body() data: any) {
     try {
+      // ✅ SECURITY: Validate GPS coordinates if provided
+      if (data.latitude && data.longitude) {
+        const validated = validateGPSCoordinates(data.latitude, data.longitude, false);
+        data.latitude = validated.lat;
+        data.longitude = validated.lng;
+      }
+
+      // ✅ SECURITY: Validate phone number
+      if (data.phone) {
+        data.phone = validateAndNormalizePhone(data.phone);
+      }
+
       const merchant = await this.merchantsService.createMerchant(data);
       return {
         success: true,
@@ -67,6 +80,18 @@ export class MerchantsController {
   @Put(':id')
   async updateMerchant(@Param('id') id: string, @Body() data: any) {
     try {
+      // ✅ SECURITY: Validate GPS coordinates if provided
+      if (data.latitude && data.longitude) {
+        const validated = validateGPSCoordinates(data.latitude, data.longitude, false);
+        data.latitude = validated.lat;
+        data.longitude = validated.lng;
+      }
+
+      // ✅ SECURITY: Validate phone number
+      if (data.phone) {
+        data.phone = validateAndNormalizePhone(data.phone);
+      }
+
       const merchant = await this.merchantsService.updateMerchant(parseInt(id), data);
       return {
         success: true,
