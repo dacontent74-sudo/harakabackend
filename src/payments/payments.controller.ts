@@ -4,7 +4,7 @@ import { PaymentsService } from './payments.service';
 import { OrdersService } from '../orders/orders.service';
 import { WebhookGuard } from './guards/webhook.guard';
 import { IdempotencyService } from './services/idempotency.service';
-import { SmsService } from '../notifications/sms.service';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 
 @Controller('payments')
 @UseGuards(ThrottlerGuard) // ✅ SECURITY: Rate limit all payment endpoints
@@ -15,7 +15,7 @@ export class PaymentsController {
     private readonly paymentsService: PaymentsService,
     private readonly ordersService: OrdersService,
     private readonly idempotencyService: IdempotencyService,
-    private readonly smsService: SmsService,
+    private readonly whatsappService: WhatsAppService,
   ) {}
 
   /**
@@ -68,16 +68,16 @@ export class PaymentsController {
       await this.ordersService.updateOrder(order);
       this.logger.log(`✅ Order updated with payment info`);
 
-      // 📱 SMS NOTIFICATION: Payment Initiated
+      // 📱 WHATSAPP NOTIFICATION: Payment Initiated
       const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
       const customerName = order.senderName || order.recipientName || 'Customer';
 
       if (customerPhone) {
-        this.logger.log(`📱 Sending "payment initiated" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
+        this.logger.log(`📱 Sending "payment initiated" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendMessage(
           customerPhone,
-          `Hi ${customerName}! Please check your phone for the Mobile Money payment prompt to pay ${Math.round(amount)} RWF for order #${order.id.substring(0, 8).toUpperCase()}. - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          `Hi *${customerName}*! 👋\n\n💳 Please check your phone for the Mobile Money payment prompt to pay *${Math.round(amount)} RWF* for order *#${order.id.substring(0, 8).toUpperCase()}*.\n\n🚀 Haraka Delivery`
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
     } else {
       this.logger.error(`❌ Payment failed:`, result.error);
@@ -213,16 +213,17 @@ export class PaymentsController {
           // ✅ CRITICAL FIX: Mark as processed AFTER successful update
           this.idempotencyService.markProcessed(depositId, status);
 
-          // 📱 SMS NOTIFICATION: Payment Confirmed
+          // 📱 WHATSAPP NOTIFICATION: Payment Confirmed
           const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
           const customerName = order.senderName || order.recipientName || 'Customer';
 
           if (customerPhone) {
-            this.logger.log(`📱 Sending "payment confirmed" SMS to ${customerPhone}`);
-            this.smsService.sendCustomSms(
+            this.logger.log(`📱 Sending "payment confirmed" WhatsApp to ${customerPhone}`);
+            this.whatsappService.sendPaymentConfirmation(
               customerPhone,
-              `Hi ${customerName}! Payment confirmed! ✅ Your order #${order.id.substring(0, 8).toUpperCase()} (${Math.round(order.total || 0)} RWF) has been sent to ${order.restaurant || order.restaurantName || 'the restaurant'}. They will start preparing it soon. - Haraka Delivery`
-            ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+              Math.round(order.total || 0),
+              order.id.substring(0, 8).toUpperCase()
+            ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
           }
         } else {
           this.logger.error(`❌ No order found with depositId: ${depositId}`);
@@ -284,15 +285,16 @@ export class PaymentsController {
         await this.ordersService.updateOrder(order);
         this.logger.log(`✅ MANUALLY confirmed payment for order ${order.id}`);
 
-        // Send SMS notification
+        // Send WhatsApp notification
         const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
         const customerName = order.senderName || order.recipientName || 'Customer';
 
         if (customerPhone) {
-          this.smsService.sendCustomSms(
+          this.whatsappService.sendPaymentConfirmation(
             customerPhone,
-            `Hi ${customerName}! Payment confirmed! ✅ Your order #${order.id.substring(0, 8).toUpperCase()} has been confirmed. - Haraka Delivery`
-          ).catch(err => this.logger.error(`SMS failed: ${err.message}`));
+            Math.round(order.total || 0),
+            order.id.substring(0, 8).toUpperCase()
+          ).catch(err => this.logger.error(`WhatsApp failed: ${err.message}`));
         }
 
         return {

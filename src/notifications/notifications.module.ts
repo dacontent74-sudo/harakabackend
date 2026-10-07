@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { EmailService } from './email.service';
 import { SmsService } from './sms.service';
+import { WhatsAppService } from './whatsapp.service';
+import { NotificationsController } from './notifications.controller';
 
 @Module({
-  providers: [EmailService, SmsService],
-  exports: [EmailService, SmsService],
+  controllers: [NotificationsController],
+  providers: [EmailService, SmsService, WhatsAppService],
+  exports: [EmailService, SmsService, WhatsAppService],
 })
 export class NotificationsModule {}

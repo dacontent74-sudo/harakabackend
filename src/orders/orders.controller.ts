@@ -3,7 +3,7 @@ import { OrdersService } from './orders.service';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
-import { SmsService } from '../notifications/sms.service';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 import { Order } from './entities/order.entity';
 
 @Controller('orders')
@@ -13,7 +13,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly statusValidation: StatusValidationService,
-    private readonly smsService: SmsService,
+    private readonly whatsappService: WhatsAppService,
   ) {}
 
   // Create pending order (sender fills their info, system sends link to recipient)
@@ -66,20 +66,20 @@ export class OrdersController {
       const isParcel = createdOrder.orderType === 'parcel' || createdOrder.status === 'ready_for_pickup';
 
       if (customerPhone) {
-        this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
+        this.logger.log(`📱 Sending "order created" WhatsApp to ${customerPhone}`);
 
         if (isParcel) {
           // 📦 PARCEL: Goes directly to courier
-          this.smsService.sendCustomSms(
+          this.whatsappService.sendMessage(
             customerPhone,
-            `Hi ${customerName}! Your parcel delivery #${createdOrder.id.substring(0, 8).toUpperCase()} has been created. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF. ' : ''}A courier will be assigned shortly to pick up from your location. - Haraka Delivery`
-          ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+            `Hi *${customerName}*! 👋\n\n📦 Your parcel delivery *#${createdOrder.id.substring(0, 8).toUpperCase()}* has been created.\n\n${createdOrder.paymentMethod === 'Cash on Delivery' ? '💰 Total: *' + Math.round(createdOrder.total || 0) + ' RWF*\n\n' : ''}🚗 A courier will be assigned shortly to pick up from your location.\n\n🚀 Haraka Delivery`
+          ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
         } else {
           // 🍔 FOOD: Goes through restaurant
-          this.smsService.sendCustomSms(
+          this.whatsappService.sendMessage(
             customerPhone,
-            `Hi ${customerName}! Your order #${createdOrder.id.substring(0, 8).toUpperCase()} has been created successfully. ${createdOrder.paymentMethod === 'Cash on Delivery' ? 'Total: ' + Math.round(createdOrder.total || 0) + ' RWF (pay on delivery)' : 'Please complete payment to confirm your order.'} - Haraka Delivery`
-          ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+            `Hi *${customerName}*! 👋\n\n🍽️ Your order *#${createdOrder.id.substring(0, 8).toUpperCase()}* has been created successfully.\n\n${createdOrder.paymentMethod === 'Cash on Delivery' ? '💰 Total: *' + Math.round(createdOrder.total || 0) + ' RWF* (pay on delivery)' : '💳 Please complete payment to confirm your order.'}\n\n🚀 Haraka Delivery`
+          ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
         }
       }
     }
@@ -162,77 +162,76 @@ export class OrdersController {
 
       this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${body.status}`);
 
-      // 📱 SEND SMS NOTIFICATIONS based on status change
+      // 📱 SEND WHATSAPP NOTIFICATIONS based on status change
       const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
       const customerName = order.senderName || order.recipientName || 'Customer';
+      const orderType = order.orderType || 'food';
 
       // When order is CONFIRMED (restaurant received it)
       if (body.status === 'confirmed' && customerPhone && oldStatus !== 'confirmed') {
-        this.logger.log(`📱 Sending "order confirmed by restaurant" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
+        this.logger.log(`📱 Sending "order confirmed by restaurant" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendMessage(
           customerPhone,
-          `Hi ${customerName}! ${order.restaurant || order.restaurantName || 'The restaurant'} has received your order #${order.id.substring(0, 8).toUpperCase()}. They will start preparing it soon! - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          `Hi *${customerName}*! 👋\n\n✅ *${order.restaurant || order.restaurantName || 'The restaurant'}* has received your order *#${order.id.substring(0, 8).toUpperCase()}*.\n\nThey will start preparing it soon! 👨‍🍳\n\n🚀 Haraka Delivery`
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When restaurant starts PREPARING
       if (body.status === 'preparing' && customerPhone) {
-        this.logger.log(`📱 Sending "order preparing" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
+        this.logger.log(`📱 Sending "order preparing" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendMessage(
           customerPhone,
-          `Hi ${customerName}! Good news! ${order.restaurant || order.restaurantName || 'The restaurant'} is now preparing your order #${order.id.substring(0, 8).toUpperCase()}. It will be ready soon! 👨‍🍳 - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          `Hi *${customerName}*! 👋\n\n👨‍🍳 Good news! *${order.restaurant || order.restaurantName || 'The restaurant'}* is now preparing your order *#${order.id.substring(0, 8).toUpperCase()}*.\n\nIt will be ready soon! 🍽️\n\n🚀 Haraka Delivery`
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When courier is ASSIGNED
       if (body.status === 'assigned' && customerPhone) {
-        this.logger.log(`📱 Sending "courier assigned" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
+        this.logger.log(`📱 Sending "courier assigned" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendMessage(
           customerPhone,
-          `Hi ${customerName}! A courier has been assigned to your order #${order.id.substring(0, 8).toUpperCase()}! They will pick it up once it's ready. 🏍️ - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          `Hi *${customerName}*! 👋\n\n🚗 A courier has been assigned to your order *#${order.id.substring(0, 8).toUpperCase()}*!\n\nThey will pick it up once it's ready. 🏍️\n\n🚀 Haraka Delivery`
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When courier ARRIVES AT PICKUP (at restaurant)
       if (body.status === 'arrived_at_pickup' && customerPhone) {
-        this.logger.log(`📱 Sending "courier arrived at pickup" SMS to ${customerPhone}`);
-        this.smsService.sendCustomSms(
+        this.logger.log(`📱 Sending "courier arrived at pickup" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendMessage(
           customerPhone,
-          `Hi ${customerName}! Your courier has arrived at ${order.restaurant || order.restaurantName || 'the restaurant'} to pick up your order #${order.id.substring(0, 8).toUpperCase()}. Your food will be on its way to you very soon! 🏍️ - Haraka Delivery`
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          `Hi *${customerName}*! 👋\n\n🚗 Your courier has arrived at *${order.restaurant || order.restaurantName || 'the restaurant'}* to pick up your order *#${order.id.substring(0, 8).toUpperCase()}*.\n\nYour food will be on its way to you very soon! 🏍️\n\n🚀 Haraka Delivery`
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When restaurant marks order as READY
       if (body.status === 'ready' && customerPhone) {
-        this.logger.log(`📱 Sending "order ready" SMS to ${customerPhone}`);
-        this.smsService.sendOrderReadySms({
-          phone: customerPhone,
-          customerName: customerName,
-          orderId: order.id,
-          restaurantName: order.restaurant || order.restaurantName,
-        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        this.logger.log(`📱 Sending "order ready" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendOrderReady(
+          customerPhone,
+          orderType,
+          order.id.substring(0, 8).toUpperCase()
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When courier picks up the order
       if (body.status === 'picked_up' && customerPhone && body.courierName) {
-        this.logger.log(`📱 Sending "out for delivery" SMS to ${customerPhone}`);
-        this.smsService.sendOrderPickedUpSms({
-          phone: customerPhone,
-          customerName: customerName,
-          orderId: order.id,
-          courierName: body.courierName,
-          courierPhone: body.courierPhone || 'N/A',
-        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        this.logger.log(`📱 Sending "out for delivery" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendOrderPickedUp(
+          customerPhone,
+          orderType,
+          order.id.substring(0, 8).toUpperCase(),
+          body.courierName
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       // When order is delivered
       if (body.status === 'delivered' && customerPhone) {
-        this.logger.log(`📱 Sending "order delivered" SMS to ${customerPhone}`);
-        this.smsService.sendOrderDeliveredSms({
-          phone: customerPhone,
-          customerName: customerName,
-          orderId: order.id,
-        }).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        this.logger.log(`📱 Sending "order delivered" WhatsApp to ${customerPhone}`);
+        this.whatsappService.sendOrderDelivered(
+          customerPhone,
+          orderType,
+          order.id.substring(0, 8).toUpperCase()
+        ).catch(err => this.logger.error(`WhatsApp send failed: ${err.message}`));
       }
 
       return {
