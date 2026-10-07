@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Param, Logger, UseGuards, HttpCode } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { OrdersService } from '../orders/orders.service';
 import { WebhookGuard } from './guards/webhook.guard';
@@ -6,6 +7,7 @@ import { IdempotencyService } from './services/idempotency.service';
 import { SmsService } from '../notifications/sms.service';
 
 @Controller('payments')
+@UseGuards(ThrottlerGuard) // ✅ SECURITY: Rate limit all payment endpoints
 export class PaymentsController {
   private readonly logger = new Logger(PaymentsController.name);
 

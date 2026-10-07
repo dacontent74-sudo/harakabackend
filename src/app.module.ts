@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { PricingModule } from './pricing/pricing.module';
 import { MerchantsModule } from './merchants/merchants.module';
 import { OrdersModule } from './orders/orders.module';
@@ -20,6 +21,11 @@ import { AuditLog } from './auth/entities/audit-log.entity';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // ✅ SECURITY: Rate limiting to prevent spam/DoS attacks
+    ThrottlerModule.forRoot([{
+      ttl: 60000, // 60 seconds
+      limit: 20, // 20 requests per minute per IP (generous for mobile apps)
+    }]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
