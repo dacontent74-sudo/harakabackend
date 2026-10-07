@@ -5,25 +5,56 @@ import { Request } from 'express';
 export class WebhookGuard implements CanActivate {
   private readonly logger = new Logger(WebhookGuard.name);
 
-  // PawaPay webhook IPs - Update these with actual PawaPay IPs
+  // PawaPay webhook IPs - Configurable via environment variable
   private readonly ALLOWED_IPS = [
     '127.0.0.1', // localhost for testing
     '::1', // IPv6 localhost
     '::ffff:127.0.0.1', // IPv6-mapped IPv4 localhost
-    // Add PawaPay production IPs here when available
-    // Example: '52.18.xxx.xxx', '54.xxx.xxx.xxx'
+    // Add from environment variable: WEBHOOK_ALLOWED_IPS (comma-separated)
+    ...(process.env.WEBHOOK_ALLOWED_IPS
+      ? process.env.WEBHOOK_ALLOWED_IPS.split(',').map(ip => ip.trim())
+      : []
+    ),
   ];
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
     const clientIp = this.getClientIp(request);
+    const userAgent = (request.headers['user-agent'] || '').toLowerCase();
 
-    this.logger.log(`🔒 Webhook from IP: ${clientIp}, User-Agent: ${request.headers['user-agent']}`);
+    this.logger.log(`🔒 Webhook from IP: ${clientIp}, User-Agent: ${userAgent}`);
 
-    // TEMPORARY: Allow ALL webhooks to diagnose payment confirmation issue
-    // TODO: Re-enable IP whitelist after confirming webhook flow works
-    this.logger.warn('⚠️ Allowing all webhook sources (temporary diagnostic mode)');
-    return true;
+    // In development, allow all IPs
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.warn('⚠️ Development mode - allowing all webhook IPs');
+      return true;
+    }
+
+    // ✅ PRODUCTION SECURITY: Multi-layer validation
+
+    // Layer 1: Check if from trusted webhook router (Africa Cyber Trust)
+    // Africa Cyber Trust uses Python requests library to forward webhooks
+    if (userAgent.includes('python-requests')) {
+      this.logger.log(`✅ Webhook from trusted router (Africa Cyber Trust)`);
+      return true;
+    }
+
+    // Layer 2: Check if from PawaPay directly (if they send directly in future)
+    // PawaPay may use specific user-agents or IPs
+    if (userAgent.includes('pawapay')) {
+      this.logger.log(`✅ Webhook from PawaPay`);
+      return true;
+    }
+
+    // Layer 3: Check if from whitelisted IP (localhost, testing, known IPs)
+    if (this.ALLOWED_IPS.includes(clientIp)) {
+      this.logger.log(`✅ Webhook from whitelisted IP: ${clientIp}`);
+      return true;
+    }
+
+    // ❌ REJECT: Unknown source
+    this.logger.error(`❌ Unauthorized webhook from IP: ${clientIp}, User-Agent: ${userAgent}`);
+    throw new UnauthorizedException('Webhook source not authorized');
   }
 
   private getClientIp(request: Request): string {
