@@ -26,6 +26,16 @@ export class WebhookGuard implements CanActivate {
       return true;
     }
 
+    // Check for Africa Cyber Trust webhook router (trusted forwarder)
+    const userAgent = request.headers['user-agent'] || '';
+    const referer = request.headers['referer'] || '';
+
+    // Allow webhooks forwarded from Africa Cyber Trust
+    if (userAgent.includes('python-requests') || referer.includes('africa-cyber-trust')) {
+      this.logger.log(`✅ Webhook from trusted forwarder (Africa Cyber Trust)`);
+      return true;
+    }
+
     // Check if IP is whitelisted
     if (!this.ALLOWED_IPS.includes(clientIp)) {
       this.logger.error(`❌ Unauthorized webhook from IP: ${clientIp}`);
