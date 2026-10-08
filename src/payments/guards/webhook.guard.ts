@@ -1,5 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
+import { timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class WebhookGuard implements CanActivate {
@@ -31,6 +32,20 @@ export class WebhookGuard implements CanActivate {
     }
 
     // ✅ PRODUCTION SECURITY: Multi-layer validation
+    // NOTE: the controller additionally re-verifies every deposit with the
+    // PawaPay API before changing an order, so this guard is defence in depth.
+
+    // Layer 0: shared secret (recommended) - header X-Webhook-Secret or ?secret=
+    const expected = process.env.WEBHOOK_SECRET;
+    if (expected) {
+      const provided = String(request.headers['x-webhook-secret'] || (request.query as any)?.secret || '');
+      const a = Buffer.from(provided);
+      const b = Buffer.from(expected);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        this.logger.log('✅ Webhook authenticated with shared secret');
+        return true;
+      }
+    }
 
     // Layer 1: Check if from trusted webhook router (Africa Cyber Trust)
     // Africa Cyber Trust uses Python requests library to forward webhooks

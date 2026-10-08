@@ -22,7 +22,8 @@
     "migration:generate": "npm run typeorm -- migration:generate -d src/config/typeorm.config.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/config/typeorm.config.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/config/typeorm.config.ts",
-    "seed": "ts-node src/database/seeds/run-seeds.ts"
+    "seed": "ts-node src/database/seeds/run-seeds.ts",
+    "postbuild": "node scripts/postbuild.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -31,29 +32,20 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
-    "@nestjs/platform-socket.io": "^10.0.0",
-    "@nestjs/schedule": "^4.0.0",
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/typeorm": "^10.0.2",
-    "@nestjs/websockets": "^10.0.0",
     "axios": "^1.6.0",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "dotenv": "^16.3.1",
-    "ioredis": "^5.3.2",
-    "moment": "^2.29.4",
-    "nodemailer": "^6.9.7",
+    "helmet": "^8.3.0",
+    "nodemailer": "^10.0.16",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.0",
-    "qrcode-terminal": "^0.12.0",
-    "redis": "^4.6.0",
-    "socket.io": "^4.6.0",
     "twilio": "^6.1.2",
-    "typeorm": "^0.3.31",
-    "uuid": "^9.0.0",
-    "whatsapp-web.js": "^1.34.7"
+    "typeorm": "^0.3.31"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -65,7 +57,6 @@
     "@types/node": "^20.3.1",
     "@types/nodemailer": "^6.4.14",
     "@types/passport-jwt": "^3.0.13",
-    "@types/uuid": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.42.0",
@@ -96,5 +87,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

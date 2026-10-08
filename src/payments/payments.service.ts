@@ -1,13 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 import { validateAndNormalizePhone, validateAmount } from '../utils/validation';
 
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
-  private readonly pawapayBaseUrl = 'https://api.pawapay.cloud';
-  private readonly pawapayToken = process.env.PAWAPAY_API_TOKEN;
+  private get pawapayBaseUrl(): string {
+    // PAWAPAY_API_URL (not PAWAPAY_BASE_URL) so an old sandbox value can't silently switch production.
+    return (process.env.PAWAPAY_API_URL || 'https://api.pawapay.cloud').replace(/\/+$/, '');
+  }
+  private get pawapayToken(): string | undefined {
+    return process.env.PAWAPAY_API_TOKEN;
+  }
 
   /**
    * Initiate a mobile money deposit payment
@@ -22,7 +27,8 @@ export class PaymentsService {
       const depositId = uuidv4(); // Generate proper 36-character UUID for PawaPay
 
       // ✅ SECURITY: Validate and normalize phone number
-      const normalizedPhone = validateAndNormalizePhone(data.phoneNumber);
+      // PawaPay expects the MSISDN as digits only (e.g. 250788123456)
+      const normalizedPhone = validateAndNormalizePhone(data.phoneNumber).replace(/^\+/, '');
 
       // Determine correspondent based on phone number prefix
       const correspondent = this.getCorrespondent(normalizedPhone);
@@ -80,10 +86,10 @@ export class PaymentsService {
         this.logger.error('Failure code:', response.data.failureCode);
         this.logger.error('Rejection reason:', response.data.rejectionReason);
 
-        const failureMsg = response.data.failureReason
-          || response.data.rejectionReason
+        const reason = response.data.rejectionReason || response.data.failureReason;
+        const failureMsg = (reason && (reason.rejectionMessage || reason.failureMessage || reason.rejectionCode || reason.failureCode))
           || response.data.failureMessage
-          || response.data.reason
+          || (typeof reason === 'string' ? reason : null)
           || 'Unknown - check PawaPay dashboard';
 
         userMessage = `Payment failed: ${failureMsg}`;
@@ -92,7 +98,6 @@ export class PaymentsService {
           success: false,
           error: userMessage,
           pawapayStatus,
-          fullResponse: response.data,
         };
       }
 
@@ -101,7 +106,6 @@ export class PaymentsService {
         depositId,
         status: pawapayStatus,
         message: userMessage,
-        pawapayResponse: response.data, // Include full response for debugging
       };
     } catch (error) {
       this.logger.error('❌ PawaPay deposit failed:', error.response?.data || error.message);
@@ -129,7 +133,6 @@ export class PaymentsService {
       return {
         success: false,
         error: errorMessage,
-        details: error.response?.data,
       };
     }
   }
@@ -140,18 +143,26 @@ export class PaymentsService {
   async checkDepositStatus(depositId: string) {
     try {
       const response = await axios.get(
-        `${this.pawapayBaseUrl}/deposits/${depositId}`,
+        `${this.pawapayBaseUrl}/deposits/${encodeURIComponent(depositId)}`,
         {
           headers: {
             'Authorization': `Bearer ${this.pawapayToken}`,
           },
+          timeout: 20000,
         },
       );
 
+      // PawaPay v1 returns an array with one deposit; tolerate a bare object too.
+      const deposit = Array.isArray(response.data) ? response.data[0] : response.data;
+      if (!deposit) {
+        return { success: false, status: 'NOT_FOUND', error: 'Deposit not found' };
+      }
+
       return {
         success: true,
-        status: response.data.status,
-        data: response.data,
+        status: deposit.status as string,
+        amount: Number(deposit.depositedAmount ?? deposit.requestedAmount ?? deposit.amount),
+        currency: deposit.currency as string,
       };
     } catch (error) {
       this.logger.error('❌ Status check failed:', error.response?.data || error.message);
@@ -160,6 +171,71 @@ export class PaymentsService {
         success: false,
         error: 'Failed to check payment status',
       };
+    }
+  }
+
+  /**
+   * Send money TO a mobile money wallet (restaurant withdrawals).
+   * Uses the PawaPay payouts API - never the deposits API, which would
+   * charge the recipient instead of paying them.
+   */
+  async initiatePayout(data: { amount: number; phoneNumber: string; description: string }) {
+    const payoutId = uuidv4();
+    try {
+      const msisdn = validateAndNormalizePhone(data.phoneNumber).replace(/^\+/, '');
+      const amount = Math.round(validateAmount(data.amount));
+
+      const payload = {
+        payoutId,
+        amount: amount.toFixed(0),
+        currency: 'RWF',
+        correspondent: this.getCorrespondent(msisdn),
+        recipient: { type: 'MSISDN', address: { value: msisdn } },
+        customerTimestamp: new Date().toISOString(),
+        statementDescription: data.description.substring(0, 22),
+      };
+
+      this.logger.log(`💸 Initiating PawaPay payout ${payoutId}: ${amount} RWF to ${msisdn}`);
+
+      const response = await axios.post(`${this.pawapayBaseUrl}/payouts`, payload, {
+        headers: { Authorization: `Bearer ${this.pawapayToken}`, 'Content-Type': 'application/json' },
+        timeout: 30000,
+      });
+
+      const status = response.data?.status as string;
+      if (status === 'REJECTED' || status === 'FAILED') {
+        return {
+          success: false,
+          payoutId,
+          status,
+          error:
+            response.data?.rejectionReason?.rejectionMessage ||
+            response.data?.failureReason?.failureMessage ||
+            'Payout rejected by PawaPay',
+        };
+      }
+      return { success: true, payoutId, status };
+    } catch (error) {
+      this.logger.error('❌ PawaPay payout failed:', error.response?.data || error.message);
+      return {
+        success: false,
+        payoutId,
+        error: error.response?.data?.rejectionReason?.rejectionMessage || error.message || 'Payout failed',
+      };
+    }
+  }
+
+  async checkPayoutStatus(payoutId: string) {
+    try {
+      const response = await axios.get(`${this.pawapayBaseUrl}/payouts/${encodeURIComponent(payoutId)}`, {
+        headers: { Authorization: `Bearer ${this.pawapayToken}` },
+        timeout: 20000,
+      });
+      const payout = Array.isArray(response.data) ? response.data[0] : response.data;
+      return { success: !!payout, status: payout?.status as string | undefined };
+    } catch (error) {
+      this.logger.error('❌ Payout status check failed:', error.response?.data || error.message);
+      return { success: false, status: undefined as string | undefined, error: 'Failed to check payout status' };
     }
   }
 
@@ -213,7 +289,6 @@ export class PaymentsService {
       correspondent,
       apiUrl: `${this.pawapayBaseUrl}/deposits`,
       tokenPresent: !!this.pawapayToken,
-      tokenPreview: this.pawapayToken ? this.pawapayToken.substring(0, 20) + '...' : 'NOT SET',
     };
   }
 

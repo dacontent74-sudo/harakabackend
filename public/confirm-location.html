@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Confirm Restaurant Location - Haraka</title>
+  <style>
+    :root { --orange:#ea580c; --orange-d:#c2410c; --green:#16a34a; --green-d:#15803d; --text:#111827; --muted:#4b5563; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--text);
+           background: linear-gradient(135deg,#fff7ed,#fffbeb); }
+    .card { width:100%; max-width:440px; background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.08); padding:28px; }
+    .icon { width:72px; height:72px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:36px; background:#ffedd5; }
+    h1 { font-size:22px; text-align:center; margin:0 0 8px; }
+    p.sub { text-align:center; color:var(--muted); font-size:14px; margin:0 0 24px; }
+    .box { border-radius:10px; padding:14px; margin-bottom:16px; font-size:13px; line-height:1.5; }
+    .err { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+    .warn { color:#854d0e; margin-top:6px; }
+    .info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; font-size:12px; }
+    button { width:100%; border:0; border-radius:12px; padding:15px; font-size:16px; font-weight:600; cursor:pointer; color:#fff; margin-bottom:10px; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .b-orange { background:var(--orange); } .b-orange:hover:not(:disabled) { background:var(--orange-d); }
+    .b-green { background:var(--green); } .b-green:hover:not(:disabled) { background:var(--green-d); }
+    .b-grey { background:#f3f4f6; color:#374151; font-weight:500; }
+    a { color:inherit; }
+    .foot { text-align:center; font-size:12px; color:#6b7280; margin-top:18px; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <main class="card" id="app">
+    <div class="icon" id="icon">📍</div>
+    <h1 id="title">Confirm Restaurant Location</h1>
+    <p class="sub" id="subtitle">Stand inside your restaurant, then share your GPS location so couriers and delivery prices are accurate.</p>
+
+    <div class="box err hidden" id="error"></div>
+    <div class="box ok hidden" id="location"></div>
+
+    <div id="actions">
+      <button class="b-orange" id="getBtn">Get My Location</button>
+      <button class="b-green hidden" id="confirmBtn">Confirm This Location</button>
+      <button class="b-grey hidden" id="retryBtn">Get Location Again</button>
+    </div>
+
+    <div class="box info" id="tip"><strong>Important:</strong> make sure you are physically at the restaurant before confirming. This link works once and expires after 24 hours.</div>
+    <div class="foot">Powered by <strong>Haraka Delivery</strong></div>
+  </main>
+
+  <script>
+    (function () {
+      var token = new URLSearchParams(window.location.search).get('token');
+      var loc = null;
+      var $ = function (id) { return document.getElementById(id); };
+
+      function showError(msg) { var e = $('error'); e.textContent = msg; e.classList.remove('hidden'); }
+      function clearError() { $('error').classList.add('hidden'); }
+
+      if (!token) {
+        $('icon').textContent = '⚠️';
+        $('title').textContent = 'Invalid Link';
+        $('subtitle').textContent = 'This confirmation link is invalid. Please ask Haraka for a new one.';
+        $('actions').classList.add('hidden');
+        $('tip').classList.add('hidden');
+        return;
+      }
+
+      function renderLocation() {
+        var box = $('location');
+        box.textContent = '';
+        var lines = [
+          'Location detected',
+          'Latitude: ' + loc.lat.toFixed(6),
+          'Longitude: ' + loc.lng.toFixed(6),
+          'Accuracy: ±' + Math.round(loc.accuracy) + ' m'
+        ];
+        lines.forEach(function (t, i) {
+          var d = document.createElement('div');
+          d.textContent = t;
+          if (i === 0) d.style.fontWeight = '600';
+          box.appendChild(d);
+        });
+        if (loc.accuracy > 100) {
+          var w = document.createElement('div');
+          w.className = 'warn';
+          w.textContent = 'Accuracy is low. Turn on GPS / high-accuracy mode, move near a window or outside, then tap "Get Location Again".';
+          box.appendChild(w);
+        }
+        var a = document.createElement('a');
+        a.href = 'https://www.google.com/maps?q=' + loc.lat + ',' + loc.lng;
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.textContent = 'Check on Google Maps';
+        box.appendChild(a);
+        box.classList.remove('hidden');
+        $('getBtn').classList.add('hidden');
+        $('confirmBtn').classList.remove('hidden');
+        $('retryBtn').classList.remove('hidden');
+      }
+
+      function getLocation() {
+        if (!navigator.geolocation) { showError('Geolocation is not supported by this browser.'); return; }
+        clearError();
+        var btns = [$('getBtn'), $('retryBtn')];
+        btns.forEach(function (b) { b.disabled = true; });
+        $('getBtn').textContent = 'Getting location...';
+        navigator.geolocation.getCurrentPosition(function (p) {
+          btns.forEach(function (b) { b.disabled = false; });
+          $('getBtn').textContent = 'Get My Location';
+          loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+          renderLocation();
+        }, function (err) {
+          btns.forEach(function (b) { b.disabled = false; });
+          $('getBtn').textContent = 'Get My Location';
+          var m = { 1: 'Please allow location access to confirm your restaurant location.', 2: 'Location information is unavailable.', 3: 'Location request timed out. Try again.' };
+          showError(m[err.code] || 'Could not get your location.');
+        }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+      }
+
+      function confirmLocation() {
+        if (!loc) { showError('Please get your location first.'); return; }
+        clearError();
+        var btn = $('confirmBtn');
+        btn.disabled = true; btn.textContent = 'Confirming...';
+        fetch('/api/v1/merchants/location/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token, latitude: loc.lat, longitude: loc.lng })
+        }).then(function (r) { return r.json().catch(function () { return {}; }); })
+          .then(function (data) {
+            if (data && data.success) {
+              $('icon').textContent = '✅';
+              $('icon').style.background = '#dcfce7';
+              $('title').textContent = 'Location Confirmed!';
+              $('subtitle').textContent = 'Thank you' + (data.merchant && data.merchant.name ? ', ' + data.merchant.name : '') + '. Your restaurant location has been saved. You can close this page.';
+              $('actions').classList.add('hidden');
+              $('tip').classList.add('hidden');
+            } else {
+              btn.disabled = false; btn.textContent = 'Confirm This Location';
+              showError((data && (data.error || data.message)) || 'Failed to confirm location. The link may have expired - ask Haraka for a new one.');
+            }
+          }).catch(function () {
+            btn.disabled = false; btn.textContent = 'Confirm This Location';
+            showError('Network error. Check your connection and try again.');
+          });
+      }
+
+      $('getBtn').addEventListener('click', getLocation);
+      $('retryBtn').addEventListener('click', getLocation);
+      $('confirmBtn').addEventListener('click', confirmLocation);
+    })();
+  </script>
+</body>
+</html>

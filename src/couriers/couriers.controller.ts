@@ -1,96 +1,112 @@
-import { Controller, Get, Post, Put, Body, Param, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, ParseIntPipe, HttpCode } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CouriersService } from './couriers.service';
+import { Auth, CurrentUser } from '../auth/decorators/roles.decorator';
+import { AuthPrincipal, COURIER_ROLE, STAFF_ALL, STAFF_WRITE } from '../auth/principal';
 
+/**
+ * Courier endpoints.
+ * - register / login are public (rate limited).
+ * - Every job endpoint requires a courier JWT; the courier id is taken from
+ *   the verified token, never from the request.
+ * - Admin endpoints (list / approve / deactivate) require a staff JWT.
+ */
 @Controller('couriers')
 export class CouriersController {
   constructor(private readonly couriersService: CouriersService) {}
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async register(@Body() body: any) {
     return this.couriersService.register(body);
   }
 
   @Post('login')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async login(@Body() body: any) {
-    return this.couriersService.login(body.phoneNumber, body.password);
+    return this.couriersService.login(body?.phoneNumber, body?.password);
   }
 
+  // ------------------------------------------------------------ courier
+
   @Get('available-jobs')
+  @Auth(COURIER_ROLE)
   async getAvailableJobs() {
     return this.couriersService.getAvailableJobs();
   }
 
   @Post('accept-job/:orderId')
-  async acceptJob(@Param('orderId') orderId: string, @Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.acceptJob(orderId, courierId);
+  @Auth(COURIER_ROLE)
+  async acceptJob(@Param('orderId') orderId: string, @CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.acceptJob(orderId, courier.id);
   }
 
   @Put('update-status/:orderId')
-  async updateJobStatus(
-    @Param('orderId') orderId: string,
-    @Body() body: any,
-    @Headers('authorization') auth: string,
-  ) {
-    const courierId = this.extractCourierId(auth);
+  @Auth(COURIER_ROLE)
+  async updateJobStatus(@Param('orderId') orderId: string, @Body() body: any, @CurrentUser() courier: AuthPrincipal) {
     return this.couriersService.updateJobStatus(
       orderId,
-      body.status,
-      courierId,
-      body.latitude && body.longitude
+      body?.status,
+      courier.id,
+      body?.latitude != null && body?.longitude != null
         ? { latitude: body.latitude, longitude: body.longitude }
         : undefined,
     );
   }
 
   @Get('active-jobs')
-  async getActiveJobs(@Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.getActiveJobs(courierId);
+  @Auth(COURIER_ROLE)
+  async getActiveJobs(@CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.getActiveJobs(courier.id);
   }
 
   @Get('history')
-  async getJobHistory(@Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.getJobHistory(courierId);
+  @Auth(COURIER_ROLE)
+  async getJobHistory(@CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.getJobHistory(courier.id);
   }
 
   @Get('earnings')
-  async getEarnings(@Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.getEarnings(courierId);
+  @Auth(COURIER_ROLE)
+  async getEarnings(@CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.getEarnings(courier.id);
   }
 
   @Post('update-location')
-  async updateLocation(@Body() body: any, @Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.updateLocation(courierId, body.latitude, body.longitude);
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  @Auth(COURIER_ROLE)
+  async updateLocation(@Body() body: any, @CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.updateLocation(courier.id, Number(body?.latitude), Number(body?.longitude));
   }
 
   @Get('profile')
-  async getCourierProfile(@Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.getCourierProfile(courierId);
+  @Auth(COURIER_ROLE)
+  async getCourierProfile(@CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.getCourierProfile(courier.id);
   }
 
   @Put('profile')
-  async updateCourierProfile(@Body() body: any, @Headers('authorization') auth: string) {
-    const courierId = this.extractCourierId(auth);
-    return this.couriersService.updateCourierProfile(courierId, body);
+  @Auth(COURIER_ROLE)
+  async updateCourierProfile(@Body() body: any, @CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.updateCourierProfile(courier.id, body || {});
   }
 
-  private extractCourierId(authHeader: string): number {
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return 1; // Default for testing
-    }
+  // ------------------------------------------------------------ admin
 
-    const token = authHeader.substring(7);
-    const parts = token.split('_');
+  @Get()
+  @Auth(...STAFF_ALL)
+  async listCouriers() {
+    return { success: true, data: await this.couriersService.listCouriers() };
+  }
 
-    if (parts.length >= 2) {
-      return parseInt(parts[1], 10);
-    }
-
-    return 1;
+  @Put(':id/approval')
+  @Auth(...STAFF_WRITE)
+  async setApproval(@Param('id', ParseIntPipe) id: number, @Body() body: { isApproved?: boolean; isActive?: boolean }) {
+    return this.couriersService.setCourierFlags(id, {
+      isApproved: typeof body?.isApproved === 'boolean' ? body.isApproved : undefined,
+      isActive: typeof body?.isActive === 'boolean' ? body.isActive : undefined,
+    });
   }
 }

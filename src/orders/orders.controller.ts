@@ -1,11 +1,26 @@
-import { Controller, Post, Get, Body, Param, Put, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Put, Logger, HttpCode, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
+import { Auth, CurrentUser } from '../auth/decorators/roles.decorator';
+import { AuthPrincipal, MERCHANT_ROLE, STAFF_ALL, STAFF_WRITE } from '../auth/principal';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
 import { TwilioSmsService } from '../notifications/twilio-sms.service';
 import { Order } from './entities/order.entity';
 
+/** Statuses a restaurant may set on its own food orders. */
+const MERCHANT_SETTABLE_STATUSES = ['confirmed', 'preparing', 'ready', 'cancelled'];
+/** A restaurant may only cancel before the food is handed to a courier. */
+const MERCHANT_CANCELLABLE_FROM = ['pending', 'confirmed', 'preparing'];
+
+/**
+ * Orders.
+ * Public (customer app, no login): create order, create pending parcel,
+ *   recipient sets delivery location, get one order by id, lookup own orders by ids.
+ * Restaurant JWT: list own orders, update status of own orders.
+ * Staff JWT: list all orders, update any order status.
+ */
 @Controller('orders')
 export class OrdersController {
   private readonly logger = new Logger(OrdersController.name);
@@ -18,13 +33,9 @@ export class OrdersController {
 
   // Create pending order (sender fills their info, system sends link to recipient)
   @Post('pending')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async createPendingOrder(@Body() dto: CreatePendingOrderDto) {
-    console.log('🎯 Controller received POST /orders/pending');
-    console.log('📨 Request body:', JSON.stringify(dto, null, 2));
-
     const order = await this.ordersService.createPendingOrder(dto);
-
-    console.log('📤 Controller returning:', JSON.stringify(order, null, 2));
 
     return {
       success: true,
@@ -35,6 +46,7 @@ export class OrdersController {
 
   // Update delivery location (recipient clicks link and selects location)
   @Put(':id/delivery-location')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async updateDeliveryLocation(
     @Param('id') id: string,
     @Body() dto: UpdateDeliveryLocationDto,
@@ -56,6 +68,7 @@ export class OrdersController {
 
   // Confirm order (after recipient selects location and sender confirms)
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async createOrder(@Body() orderData: any) {
     const createdOrder = await this.ordersService.createOrder(orderData);
 
@@ -84,18 +97,39 @@ export class OrdersController {
     };
   }
 
+  /**
+   * Customer order history: the app stores the IDs of orders it created and
+   * looks them up here. body: { ids: string[] } (max 100)
+   */
+  @Post('lookup')
+  @HttpCode(200)
+  async lookupOrders(@Body() body: { ids: string[] }) {
+    return {
+      success: true,
+      data: await this.ordersService.getOrdersByIds(Array.isArray(body?.ids) ? body.ids : []),
+    };
+  }
+
   @Get(':id')
   async getOrder(@Param('id') id: string) {
     const order = await this.ordersService.getOrderById(id);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
     return {
       success: true,
       data: order,
     };
   }
 
+  /** Staff see every order; a restaurant only sees its own food orders. */
   @Get()
-  async getAllOrders() {
-    const orders = await this.ordersService.getAllOrders();
+  @Auth(MERCHANT_ROLE, ...STAFF_ALL)
+  async getAllOrders(@CurrentUser() user: AuthPrincipal) {
+    const orders =
+      user.type === 'merchant'
+        ? await this.ordersService.getOrdersForRestaurant(user.name)
+        : await this.ordersService.getAllOrders();
     return {
       success: true,
       data: orders,
@@ -104,9 +138,11 @@ export class OrdersController {
 
   // Update order status (for restaurant/courier app) with validation
   @Put(':id/status')
+  @Auth(MERCHANT_ROLE, ...STAFF_WRITE)
   async updateOrderStatus(
     @Param('id') id: string,
     @Body() body: { status: string; courierName?: string; courierPhone?: string },
+    @CurrentUser() user: AuthPrincipal,
   ) {
     try {
       const order = await this.ordersService.getOrderById(id);
@@ -115,6 +151,19 @@ export class OrdersController {
           success: false,
           message: 'Order not found',
         };
+      }
+
+      // SECURITY: restaurants may only move their own food orders through the kitchen states.
+      if (user.type === 'merchant') {
+        if (order.orderType !== 'food' || order.restaurantName !== user.name) {
+          throw new ForbiddenException('This order does not belong to your restaurant');
+        }
+        if (!MERCHANT_SETTABLE_STATUSES.includes(body?.status)) {
+          throw new ForbiddenException(`Restaurants cannot set status "${body?.status}"`);
+        }
+        if (body.status === 'cancelled' && !MERCHANT_CANCELLABLE_FROM.includes(order.status)) {
+          throw new ForbiddenException('Order can no longer be cancelled by the restaurant');
+        }
       }
 
       // SECURITY: Validate status transition
@@ -235,6 +284,7 @@ export class OrdersController {
         data: order,
       };
     } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       this.logger.error(`❌ Status update failed: ${error.message}`);
       return {
         success: false,

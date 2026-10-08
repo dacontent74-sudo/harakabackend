@@ -66,6 +66,10 @@ export class Merchant {
   @Column({ default: false })
   locationConfirmed: boolean; // Whether location has been confirmed via link
 
+  // bcrypt hash of the restaurant app password (set by an admin). Never selected by default.
+  @Column({ nullable: true, select: false })
+  passwordHash: string;
+
   @OneToMany(() => MenuItem, menuItem => menuItem.merchant)
   menuItems: MenuItem[];
 

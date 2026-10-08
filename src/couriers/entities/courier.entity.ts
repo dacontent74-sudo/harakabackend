@@ -11,7 +11,7 @@ export class Courier {
   @Column({ unique: true })
   phoneNumber: string;
 
-  @Column()
+  @Column({ select: false })
   password: string;
 
   @Column({ default: 'motorcycle' })
@@ -40,6 +40,11 @@ export class Courier {
 
   @Column({ default: true })
   isActive: boolean;
+
+  // New self-registered couriers start unapproved (set explicitly in register()).
+  // Column default is true so couriers that existed before this column was added keep working.
+  @Column({ default: true })
+  isApproved: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -7,12 +7,14 @@ import { Order } from '../orders/entities/order.entity';
 import { WebhookGuard } from './guards/webhook.guard';
 import { IdempotencyService } from './services/idempotency.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order]),
     OrdersModule,
     NotificationsModule,
+    AuthModule,
   ],
   controllers: [PaymentsController],
   providers: [

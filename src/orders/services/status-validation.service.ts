@@ -6,12 +6,19 @@ export class StatusValidationService {
 
   // Valid status transitions
   private readonly VALID_TRANSITIONS: { [key: string]: string[] } = {
+    // Food orders
     'pending': ['confirmed', 'cancelled'],
     'confirmed': ['preparing', 'cancelled'],
     'preparing': ['ready', 'cancelled'],
     'ready': ['assigned', 'cancelled'],
-    'assigned': ['picked_up', 'cancelled'],
-    'picked_up': ['delivered', 'cancelled'],
+    // Parcel orders
+    'awaiting_recipient_location': ['ready_for_confirmation', 'cancelled'],
+    'ready_for_confirmation': ['ready_for_pickup', 'cancelled'],
+    'ready_for_pickup': ['assigned', 'cancelled'],
+    // Delivery (both)
+    'assigned': ['picked_up', 'in_transit', 'cancelled'],
+    'picked_up': ['in_transit', 'delivered', 'cancelled'],
+    'in_transit': ['delivered', 'cancelled'],
     'delivered': [], // Terminal state
     'cancelled': [], // Terminal state
     'failed': [], // Terminal state

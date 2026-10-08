@@ -443,10 +443,12 @@
 
                 if (result.success && result.data) {
                     orderData = result.data;
+                    // Escape user-supplied text (prevents HTML/script injection via order fields)
+                    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
                     document.getElementById('orderInfo').innerHTML = `
-                        <strong>From:</strong> ${orderData.senderName}<br>
-                        <strong>To:</strong> ${orderData.recipientName} (You)<br>
-                        <strong>Package:</strong> ${orderData.packageDescription} (${orderData.packageSize})<br>
+                        <strong>From:</strong> ${esc(orderData.senderName)}<br>
+                        <strong>To:</strong> ${esc(orderData.recipientName)} (You)<br>
+                        <strong>Package:</strong> ${esc(orderData.packageDescription)} (${esc(orderData.packageSize)})<br>
                         <strong>Status:</strong> Waiting for your location
                     `;
                 }

@@ -1,38 +1,47 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards, Request, Ip } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Query, Ip, ParseIntPipe, HttpCode } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { Roles } from './decorators/roles.decorator';
+import { Auth, CurrentUser } from './decorators/roles.decorator';
 import { UserRole } from './entities/user.entity';
+import { AuthPrincipal, STAFF_ADMIN } from './principal';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /** Staff (admin dashboard) login. Rate limited: 5 attempts / minute / IP. */
   @Post('login')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async login(@Body() body: { email: string; password: string }, @Ip() ip: string) {
-    return this.authService.login(body.email, body.password, ip);
+    return this.authService.login(body?.email, body?.password, ip);
   }
 
   @Post('register')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  async register(@Body() body: any, @Request() req: any) {
-    return this.authService.register({
-      ...body,
-      createdBy: req.user.id,
-    });
+  @Auth(...STAFF_ADMIN)
+  async register(@Body() body: any, @CurrentUser() user: AuthPrincipal) {
+    return this.authService.register(body, { id: user.id, role: user.role });
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
-  async getMe(@Request() req: any) {
-    return this.authService.getMe(req.user.id);
+  @Auth(...Object.values(UserRole))
+  async getMe(@CurrentUser() user: AuthPrincipal) {
+    return this.authService.getMe(user.id);
+  }
+
+  @Post('change-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Auth(...Object.values(UserRole))
+  async changePassword(
+    @Body() body: { currentPassword: string; newPassword: string },
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.authService.changeOwnPassword(user.id, body?.currentPassword, body?.newPassword);
   }
 
   @Get('users')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Auth(...STAFF_ADMIN)
   async getAllUsers() {
     return {
       success: true,
@@ -41,36 +50,23 @@ export class AuthController {
   }
 
   @Put('users/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN)
-  async updateUser(
-    @Param('id') id: string,
-    @Body() body: any,
-    @Request() req: any,
-  ) {
-    return this.authService.updateUser(parseInt(id), body, req.user.id);
+  @Auth(UserRole.SUPER_ADMIN)
+  async updateUser(@Param('id', ParseIntPipe) id: number, @Body() body: any, @CurrentUser() user: AuthPrincipal) {
+    return this.authService.updateUser(id, body || {}, user.id);
   }
 
   @Delete('users/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN)
-  async deleteUser(@Param('id') id: string, @Request() req: any) {
-    return this.authService.deleteUser(parseInt(id), req.user.id);
+  @Auth(UserRole.SUPER_ADMIN)
+  async deleteUser(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthPrincipal) {
+    return this.authService.deleteUser(id, user.id);
   }
 
   @Get('audit-logs')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
-  async getAuditLogs(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
+  @Auth(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER)
+  async getAuditLogs(@Query('limit') limit?: string, @Query('offset') offset?: string) {
     return {
       success: true,
-      data: await this.authService.getAuditLogs(
-        limit ? parseInt(limit) : 100,
-        offset ? parseInt(offset) : 0,
-      ),
+      data: await this.authService.getAuditLogs(limit ? parseInt(limit, 10) : 100, offset ? parseInt(offset, 10) : 0),
     };
   }
 }
