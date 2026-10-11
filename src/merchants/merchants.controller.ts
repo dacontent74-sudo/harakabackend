@@ -244,18 +244,22 @@ export class MerchantsController {
 
   /**
    * 📍 Generate a location confirmation link (and optionally SMS it via Twilio).
-   * body: { sendSms?: boolean }
+   * body: { sendSms?: boolean; sendEmail?: boolean }
+   * Email is skipped unless sendEmail === true (admin usually copies the link manually).
    */
   @Post(':id/location/send-link')
   @Auth(...STAFF_WRITE)
-  async sendLocationLink(@Param('id', ParseIntPipe) id: number, @Body() body: { sendSms?: boolean } = {}) {
+  async sendLocationLink(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { sendSms?: boolean; sendEmail?: boolean } = {},
+  ) {
     this.logger.log(`📍 Generating location confirmation link for merchant ${id}`);
 
     const tokenData = await this.merchantsService.generateLocationToken(id);
     const confirmationLink = `${publicLinkBase()}/confirm-location?token=${tokenData.token}`;
 
     let emailSent = false;
-    if (tokenData.merchantEmail) {
+    if (body?.sendEmail === true && tokenData.merchantEmail) {
       try {
         const emailResult = await this.emailService.sendLocationConfirmationEmail({
           to: tokenData.merchantEmail,
