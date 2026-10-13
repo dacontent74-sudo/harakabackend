@@ -305,8 +305,8 @@ export class PaymentsService {
       return 'MTN_MOMO_RWA';
     }
 
-    // Airtel: 73
-    if (normalized.startsWith('73')) {
+    // Airtel: 72 (ex-Tigo) and 73. 072 numbers were previously sent to MTN and failed.
+    if (normalized.startsWith('72') || normalized.startsWith('73')) {
       return 'AIRTEL_MOMO_RWA';
     }
 

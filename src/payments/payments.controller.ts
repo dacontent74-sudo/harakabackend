@@ -89,8 +89,38 @@ export class PaymentsController {
     if (order.paymentStatus === 'paid') {
       return { success: false, message: 'This order is already paid' };
     }
-    if (order.status === 'cancelled') {
-      return { success: false, message: 'This order was cancelled' };
+    if (order.status === 'cancelled' || order.status === 'failed' || order.status === 'delivered') {
+      return { success: false, message: 'This order can no longer be paid' };
+    }
+    // Parcel drafts only collect the recipient's location; the real order is
+    // created afterwards. Paying a draft would take money nobody tracks.
+    if (order.status === 'awaiting_recipient_location' || order.status === 'ready_for_confirmation') {
+      return { success: false, message: 'This parcel request is not confirmed yet. Payment is collected on the confirmed order.' };
+    }
+    if (order.receiverPaysOnDelivery) {
+      return { success: false, message: 'The recipient pays this order on delivery' };
+    }
+
+    // DOUBLE-CHARGE GUARD: if a prompt for this order may still be approved,
+    // never send a second one. Re-check the existing deposit with PawaPay.
+    if (order.paymentStatus === 'pending' && order.depositId) {
+      const existing = await this.verifyDeposit(order.depositId, order);
+      if (existing.verified) {
+        await this.markOrderPaid(order, 'initiate (existing deposit completed)');
+        return { success: true, depositId: order.depositId, status: 'COMPLETED', message: 'Payment already received' };
+      }
+      const inFlight = ['ACCEPTED', 'SUBMITTED', 'ENQUEUED', 'PROCESSING', 'PENDING'];
+      if (!existing.result.success || inFlight.includes(existing.status as string)) {
+        // Still waiting for the customer's PIN (or PawaPay unreachable): reuse it.
+        this.logger.log(`⏳ Order ${order.id}: deposit ${order.depositId} still ${existing.status || 'unknown'} - not sending a new prompt`);
+        return {
+          success: true,
+          depositId: order.depositId,
+          status: existing.status || 'ACCEPTED',
+          message: 'A payment prompt is already waiting on your phone. Approve it to complete payment.',
+        };
+      }
+      // FAILED / REJECTED / NOT_FOUND: safe to send a new prompt below.
     }
 
     // Get amount from order (server-computed at order creation)

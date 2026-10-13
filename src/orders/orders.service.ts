@@ -9,6 +9,7 @@ import { Order } from './entities/order.entity';
 import { Merchant } from '../merchants/entities/merchant.entity';
 import { MenuItem } from '../merchants/entities/menu-item.entity';
 import { validateAndNormalizePhone, validateGPSCoordinates } from '../utils/validation';
+import { isOpenAt } from '../utils/opening-hours';
 
 /**
  * Pickup point used for food orders when the restaurant has no confirmed GPS
@@ -205,6 +206,11 @@ export class OrdersService {
       });
       if (!merchant) {
         throw new BadRequestException('This restaurant is not available');
+      }
+      // SECURITY/UX: a closed restaurant cannot take (and be paid for) orders,
+      // even if an old app version or a tampered client skips the check.
+      if (!isOpenAt(merchant.hours)) {
+        throw new BadRequestException(`${merchant.name} is closed right now. Please order when it opens.`);
       }
 
       if (orderData.items.length > MAX_ITEMS_PER_ORDER) {

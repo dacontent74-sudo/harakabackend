@@ -371,52 +371,18 @@
                 title: 'Your Delivery Location'
             });
 
-            // Auto-detect current location (PRIMARY method)
-            if (navigator.geolocation) {
-                // Show loading while getting GPS
-                document.getElementById('selectedAddress').innerHTML =
-                    '<span style="color: #FF6B00;">📍 Detecting your location...</span>';
-                document.getElementById('locationInfo').style.display = 'block';
+            // GPS status line above the confirm button
+            const gpsBox = document.createElement('div');
+            gpsBox.id = 'gpsStatus';
+            gpsBox.style.cssText = 'padding: 12px; border-radius: 10px; margin: 0 0 12px; font-size: 14px; line-height: 1.4;';
+            const btn = document.getElementById('confirmBtn');
+            btn.parentNode.insertBefore(gpsBox, btn);
 
-                navigator.geolocation.getCurrentPosition(
-                    // Success - GPS found!
-                    (position) => {
-                        const pos = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        selectedLocation = pos;
-                        map.setCenter(pos);
-                        map.setZoom(16); // Zoom in to user's location
-                        marker.setPosition(pos);
-                        updateLocationInfo(pos);
+            startGps();
 
-                        // Auto-enable confirm button
-                        document.getElementById('confirmBtn').disabled = false;
-
-                        // Show success message
-                        alert('✅ Your location detected! You can adjust the marker if needed, or just click "Confirm My Location".');
-                    },
-                    // Error - GPS failed
-                    (error) => {
-                        console.error('GPS error:', error);
-                        document.getElementById('selectedAddress').innerHTML =
-                            '<span style="color: red;">⚠️ Could not detect location. Please tap on the map or drag the marker.</span>';
-                        alert('Please enable location access or manually select your location on the map.');
-                    },
-                    // Options
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 0
-                    }
-                );
-            } else {
-                alert('GPS not available. Please select your location manually on the map.');
-            }
-
-            // Map click handler
+            // Map click handler (manual placement)
             map.addListener('click', (event) => {
+                manuallyPlaced = true;
                 selectedLocation = {
                     lat: event.latLng.lat(),
                     lng: event.latLng.lng()
@@ -425,14 +391,135 @@
                 updateLocationInfo(selectedLocation);
             });
 
-            // Marker drag handler
+            // Marker drag handler (manual placement)
             marker.addListener('dragend', (event) => {
+                manuallyPlaced = true;
                 selectedLocation = {
                     lat: event.latLng.lat(),
                     lng: event.latLng.lng()
                 };
                 updateLocationInfo(selectedLocation);
             });
+        }
+
+        // ---------------------------------------------------------------
+        // Precise GPS: Confirm stays disabled until the fix is accurate
+        // (< 20 m) and stable (last 3 fixes within 10 m), or 30 s passed.
+        // ---------------------------------------------------------------
+        const GPS_REQUIRED_ACCURACY = 20;   // metres
+        const GPS_STABLE_RADIUS = 10;       // metres
+        const GPS_STABLE_SAMPLES = 3;
+        const GPS_TIMEOUT_MS = 30000;
+        let gpsState = 'acquiring';         // acquiring | locked | weak | unavailable
+        let gpsWatchId = null;
+        let gpsTimer = null;
+        let preciseFixes = [];
+        let latestFix = null;
+        let bestFix = null;
+        let manuallyPlaced = false;
+
+        function metersBetween(a, b) {
+            return calculateDistance(a.lat, a.lng, b.lat, b.lng) * 1000;
+        }
+
+        function stopGps() {
+            if (gpsWatchId !== null) navigator.geolocation.clearWatch(gpsWatchId);
+            gpsWatchId = null;
+            clearTimeout(gpsTimer);
+        }
+
+        function startGps() {
+            stopGps();
+            preciseFixes = []; latestFix = null; bestFix = null;
+            if (!navigator.geolocation) { gpsState = 'unavailable'; renderGps(); return; }
+            gpsState = 'acquiring';
+            renderGps();
+            gpsTimer = setTimeout(() => {
+                if (gpsState !== 'acquiring') return;
+                stopGps();
+                gpsState = bestFix ? 'weak' : 'unavailable';
+                if (bestFix && !manuallyPlaced) placeAt(bestFix);
+                renderGps();
+            }, GPS_TIMEOUT_MS);
+            gpsWatchId = navigator.geolocation.watchPosition(onGpsFix, (error) => {
+                console.error('GPS error:', error);
+                if (gpsState !== 'acquiring') return;
+                // Permission denied / unavailable: let them place the pin by hand.
+                if (error.code === 1 || error.code === 2) {
+                    stopGps();
+                    gpsState = bestFix ? 'weak' : 'unavailable';
+                    renderGps();
+                }
+            }, { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS, maximumAge: 0 });
+        }
+
+        function placeAt(fix) {
+            selectedLocation = { lat: fix.lat, lng: fix.lng };
+            map.setCenter(selectedLocation);
+            map.setZoom(17);
+            marker.setPosition(selectedLocation);
+            updateLocationInfo(selectedLocation);
+        }
+
+        function onGpsFix(position) {
+            if (gpsState !== 'acquiring') return;
+            const fix = { lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy };
+            if (!(fix.accuracy > 0)) return;
+            latestFix = fix;
+            if (!bestFix || fix.accuracy <= bestFix.accuracy) bestFix = fix;
+            if (fix.accuracy <= GPS_REQUIRED_ACCURACY) {
+                preciseFixes.push(fix);
+                if (preciseFixes.length > GPS_STABLE_SAMPLES) preciseFixes.shift();
+            } else {
+                preciseFixes = [];
+            }
+            if (!manuallyPlaced) placeAt(fix);
+            const stable = preciseFixes.length >= GPS_STABLE_SAMPLES &&
+                preciseFixes.every((f) => metersBetween(f, fix) <= GPS_STABLE_RADIUS);
+            if (stable) {
+                stopGps();
+                gpsState = 'locked';
+            }
+            renderGps();
+        }
+
+        function confirmAllowed() {
+            if (gpsState === 'acquiring') return false;
+            if (gpsState === 'unavailable') return manuallyPlaced;
+            return true;
+        }
+
+        function renderGps() {
+            const box = document.getElementById('gpsStatus');
+            const btn = document.getElementById('confirmBtn');
+            if (!box || !btn) return;
+            const m = (f) => '±' + Math.round(f.accuracy) + ' m';
+            let html, bg;
+            if (gpsState === 'acquiring') {
+                bg = 'rgba(255,107,0,0.15)';
+                html = '📡 <strong>Getting precise location...</strong><br>' +
+                    (latestFix ? 'Accuracy ' + m(latestFix) + ' - waiting for under ' + GPS_REQUIRED_ACCURACY + ' m.'
+                               : 'Waiting for GPS signal. Being outside or near a window helps.');
+            } else if (gpsState === 'locked') {
+                bg = 'rgba(0,200,0,0.15)';
+                html = '✅ <strong>Precise location found (' + m(latestFix) + ')</strong><br>Drag the marker to adjust it if needed.';
+            } else if (gpsState === 'weak') {
+                bg = 'rgba(255,193,7,0.2)';
+                html = '⚠️ <strong>Location is not precise (best ' + m(bestFix) + ')</strong><br>' +
+                    'Make sure the marker is exactly on your location before confirming. ' +
+                    '<a href="#" onclick="startGps(); return false;" style="color:#FF6B00;">Try again</a>';
+            } else {
+                bg = 'rgba(255,193,7,0.2)';
+                html = '⚠️ <strong>GPS not available</strong><br>' +
+                    (manuallyPlaced ? 'Make sure the marker is exactly on your location before confirming.'
+                                    : 'Tap the map or drag the marker to your exact location. ' +
+                                      '<a href="#" onclick="startGps(); return false;" style="color:#FF6B00;">Try GPS again</a>');
+            }
+            box.style.background = bg;
+            box.innerHTML = html;
+            const allowed = confirmAllowed();
+            btn.disabled = !allowed;
+            btn.textContent = gpsState === 'acquiring' ? 'Getting precise location...' : 'Confirm My Location';
         }
 
         // Load order details
@@ -524,7 +611,7 @@
             document.getElementById('locationInfo').style.display = 'block';
             document.getElementById('selectedAddress').textContent =
                 `Lat: ${location.lat.toFixed(6)}, Lng: ${location.lng.toFixed(6)}`;
-            document.getElementById('confirmBtn').disabled = false;
+            renderGps(); // Confirm is enabled only when the GPS rules allow it
 
             // Calculate distance and price if we have pickup location
             if (orderData && orderData.pickupLatitude && orderData.pickupLongitude) {
@@ -608,6 +695,8 @@
 
         // Confirm location
         async function confirmLocation() {
+            if (!confirmAllowed()) return;
+            stopGps();
             const confirmBtn = document.getElementById('confirmBtn');
             confirmBtn.disabled = true;
             confirmBtn.innerHTML = '<div class="loader"></div> Confirming...';
@@ -653,6 +742,12 @@
                             document.getElementById('finalPrice').textContent = Math.round(pricing.total).toLocaleString();
                             document.getElementById('finalBreakdown').innerHTML = pricing.breakdown.join('<br>');
                         }
+                        // The recipient pays the courier by mobile money on delivery
+                        // (this link is only a draft; it cannot be paid here).
+                        document.getElementById('phoneNumber').style.display = 'none';
+                        document.getElementById('payBtn').style.display = 'none';
+                        const payNote = document.getElementById('payBtn').nextElementSibling;
+                        if (payNote) payNote.textContent = 'Estimated price. You will pay by mobile money when the parcel is delivered - the courier sends the prompt to your phone.';
                     } else {
                         // Sender pays - show regular success message
                         document.getElementById('paymentRequired').style.display = 'none';

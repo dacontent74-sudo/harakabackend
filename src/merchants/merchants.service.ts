@@ -18,6 +18,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { TokenService } from '../auth/token.service';
 import { assertStrongPassword, BCRYPT_ROUNDS } from '../auth/auth.service';
 import { validateAndNormalizePhone, validateGPSCoordinates } from '../utils/validation';
+import { isOpenAt } from '../utils/opening-hours';
 
 const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-not-a-real-password', BCRYPT_ROUNDS);
 
@@ -75,25 +76,10 @@ export class MerchantsService {
   }
 
   // Helper to check if restaurant is currently open
+  // Same rule as order creation (utils/opening-hours.ts), so the app's
+  // OPEN/CLOSED badge and the server's order check always agree.
   private isCurrentlyOpen(hours: any): boolean {
-    if (!hours) return false;
-
-    const now = this.businessNow();
-    const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
-    const currentTime = now.getHours() * 60 + now.getMinutes(); // minutes since midnight
-
-    const todayHours = hours[currentDay];
-    if (!todayHours || !todayHours.open || !todayHours.close) {
-      return false;
-    }
-
-    const [openHour, openMin] = todayHours.open.split(':').map(Number);
-    const [closeHour, closeMin] = todayHours.close.split(':').map(Number);
-
-    const openTime = openHour * 60 + openMin;
-    const closeTime = closeHour * 60 + closeMin;
-
-    return currentTime >= openTime && currentTime < closeTime;
+    return isOpenAt(hours, this.businessNow());
   }
 
   // Helper to get next opening time
