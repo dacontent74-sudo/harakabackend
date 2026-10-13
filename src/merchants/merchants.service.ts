@@ -19,6 +19,7 @@ import { TokenService } from '../auth/token.service';
 import { assertStrongPassword, BCRYPT_ROUNDS } from '../auth/auth.service';
 import { validateAndNormalizePhone, validateGPSCoordinates } from '../utils/validation';
 import { isOpenAt } from '../utils/opening-hours';
+import { calculateWithdrawalFee, payoutAmountOf, WITHDRAWAL_FEE_PERCENTAGE } from '../utils/withdrawal-fee';
 
 const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-not-a-real-password', BCRYPT_ROUNDS);
 
@@ -565,6 +566,7 @@ export class MerchantsService {
       totalWithdrawn: Math.round(withdrawn - pending),
       pendingWithdrawals: Math.round(pending),
       availableForWithdrawal: Math.max(Math.round(totalEarnings - withdrawn), 0),
+      withdrawalFeePercentage: WITHDRAWAL_FEE_PERCENTAGE,
       currency: 'RWF',
     };
   }
@@ -585,6 +587,8 @@ export class MerchantsService {
     } catch (e) {
       throw new BadRequestException(e.message);
     }
+    // 8% platform fee: the full amount leaves the balance, the restaurant receives netAmount.
+    const fee = calculateWithdrawalFee(value);
 
     const saved = await this.dataSource.transaction(async (manager) => {
       // Serialise withdrawals per restaurant
@@ -598,20 +602,28 @@ export class MerchantsService {
       const w = manager.getRepository(Withdrawal).create({
         merchantId: merchant.id,
         restaurantName: merchant.name,
-        amount: value,
+        amount: fee.amount,
+        platformFee: fee.platformFee,
+        netAmount: fee.netAmount,
         phoneNumber: phone,
         status: 'requested',
       });
       return manager.getRepository(Withdrawal).save(w);
     });
 
-    this.logger.log(`💸 Withdrawal #${saved.id} requested by ${merchant.name}: ${value} RWF to ${phone}`);
+    this.logger.log(
+      `💸 Withdrawal #${saved.id} requested by ${merchant.name}: ${fee.amount} RWF ` +
+        `(fee ${fee.platformFee}, net ${fee.netAmount}) to ${phone}`,
+    );
 
     return {
       success: true,
-      message: 'Withdrawal requested. Haraka will send the money to your Mobile Money account shortly.',
+      message: `Withdrawal requested. Haraka will send ${fee.netAmount} RWF to your Mobile Money account shortly.`,
       withdrawalId: saved.id,
-      amount: value,
+      amount: fee.amount,
+      platformFee: fee.platformFee,
+      netAmount: fee.netAmount,
+      feePercentage: fee.feePercentage,
       phoneNumber: phone,
       status: saved.status,
     };
@@ -659,7 +671,7 @@ export class MerchantsService {
       case 'payout': {
         if (w.status !== 'requested') throw new BadRequestException(`Withdrawal is already ${w.status}`);
         const result = await this.paymentsService.initiatePayout({
-          amount: parseFloat(w.amount.toString()),
+          amount: payoutAmountOf(w), // net of the platform fee
           phoneNumber: w.phoneNumber,
           description: 'Haraka earnings',
         });

@@ -7,6 +7,7 @@ export type WithdrawalStatus = 'requested' | 'processing' | 'paid' | 'rejected' 
  * Requests are reviewed by an admin, who either pays them out through
  * PawaPay (status -> processing -> paid) or rejects them.
  * Requested/processing/paid withdrawals reduce the available balance.
+ * Since 2026-10-14 Haraka keeps an 8% platform fee; only netAmount is paid out.
  */
 @Entity('withdrawals')
 export class Withdrawal {
@@ -20,8 +21,17 @@ export class Withdrawal {
   @Column()
   restaurantName: string;
 
+  /** Amount requested; this full amount is deducted from the restaurant balance. */
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   amount: number;
+
+  /** Haraka platform fee (8% of amount). Null on withdrawals made before the fee existed. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  platformFee: number;
+
+  /** What the restaurant receives: amount - platformFee. Null on legacy withdrawals (paid in full). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  netAmount: number;
 
   @Column()
   phoneNumber: string;

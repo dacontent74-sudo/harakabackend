@@ -65,7 +65,7 @@ See [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md).
 6. 🔲 **Restaurant flow:** restaurant app → Accept → Preparing → Ready (customer gets SMS at each step).
 7. 🔲 **Courier flow:** the courier sees the job → Accept → Arrived → Picked up → Delivered (customer gets SMS). Courier earnings increase.
 8. 🔲 **Parcel:** create a parcel delivery with *receiver pays*. The courier collects payment at delivery. The receiver approves on their phone. The order is marked paid.
-9. 🔲 **Withdrawal:** restaurant app → withdraw a small amount → Dashboard → Payouts → *Pay via PawaPay* (needs payouts enabled and float), or *Mark paid* → status `paid`.
+9. 🔲 **Withdrawal:** restaurant app → withdraw a small amount → Dashboard → Payouts → *Pay via PawaPay* (needs payouts enabled and float), or *Mark paid* → status `paid`. **8% platform fee (since 2026-10-14):** withdrawing 1,000 RWF shows fee 80 / receive 920 in the app, the full 1,000 leaves the balance, and the PawaPay payout sends 920. See `src/utils/withdrawal-fee.ts`.
 10. 🔲 **Security spot-check:** `node scripts/smoke-test.js` → all pass.
 
 ## H. Operations
