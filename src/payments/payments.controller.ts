@@ -32,15 +32,17 @@ export class PaymentsController {
    */
   private async markOrderPaid(order: any, source: string) {
     if (order.paymentStatus === 'paid') return false;
-    order.paymentStatus = 'paid';
-    // Food orders move to "confirmed" (restaurant sees them). Parcel orders keep
-    // their courier-facing status (ready_for_pickup / in_transit / ...).
-    if (order.orderType !== 'parcel' && (!order.status || order.status === 'pending')) {
-      order.status = 'confirmed';
-      order.confirmedAt = order.confirmedAt || new Date();
-    }
-    await this.ordersService.updateOrder(order);
+    // Atomic and column-only: food orders still "pending" move to "confirmed"
+    // (the restaurant is alerted). Parcel orders keep their courier status.
+    // Never overwrites a status the restaurant/courier set meanwhile, and
+    // runs side effects (SMS) only once even if webhook + polling race.
+    if (!(await this.ordersService.markPaid(order.id))) return false;
+    const fresh = await this.ordersService.getOrderById(order.id);
+    if (fresh) Object.assign(order, fresh);
     this.logger.log(`✅ Order ${order.id} marked PAID via ${source}`);
+    if (order.status === 'cancelled') {
+      this.logger.warn(`💸 REFUND REQUIRED: order ${order.id} was paid (${order.total} RWF) after it was cancelled`);
+    }
 
     const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
     if (customerPhone) {
@@ -149,7 +151,7 @@ export class PaymentsController {
     if (result.success) {
       order.paymentStatus = 'pending';
       order.depositId = result.depositId;
-      await this.ordersService.updateOrder(order);
+      await this.ordersService.patchOrder(order.id, { paymentStatus: 'pending', depositId: result.depositId });
       this.logger.log(`✅ Order updated with payment info`);
 
       // 📱 SMS NOTIFICATION: Payment Initiated
@@ -209,7 +211,7 @@ export class PaymentsController {
     if (status === 'FAILED' || status === 'REJECTED') {
       if (order.paymentStatus !== 'paid') {
         order.paymentStatus = 'failed';
-        await this.ordersService.updateOrder(order);
+        await this.ordersService.patchOrder(order.id, { paymentStatus: 'failed' });
       }
     }
     this.logger.log(`⏳ Payment status from PawaPay: ${status || 'unknown'}`);
@@ -288,7 +290,7 @@ export class PaymentsController {
       } else if (status === 'FAILED' || status === 'REJECTED') {
         if (order.paymentStatus !== 'paid') {
           order.paymentStatus = 'failed';
-          await this.ordersService.updateOrder(order);
+          await this.ordersService.patchOrder(order.id, { paymentStatus: 'failed' });
           this.logger.log(`📝 Order ${order.id} marked as payment failed (verified)`);
         }
         this.idempotencyService.markProcessed(depositId, claimedStatus);
@@ -444,7 +446,7 @@ export class PaymentsController {
         // Paid status is only set after PawaPay confirms (webhook / polling).
         order.paymentStatus = 'pending';
         order.depositId = result.depositId;
-        await this.ordersService.updateOrder(order);
+        await this.ordersService.patchOrder(order.id, { paymentStatus: 'pending', depositId: result.depositId });
         this.logger.log(`✅ Receiver payment request sent for order ${dto.orderId}`);
       }
 

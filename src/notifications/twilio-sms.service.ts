@@ -140,6 +140,13 @@ export class TwilioSmsService {
   /**
    * Send payment initiated notification
    */
+  async sendOrderCancelled(phone: string, orderId: string, restaurantName: string, reason: string, paid: boolean): Promise<boolean> {
+    const why = reason ? ` Reason: ${reason.slice(0, 80)}.` : '';
+    const refund = paid ? ' Your payment will be refunded to your Mobile Money account.' : '';
+    const message = `Sorry, ${restaurantName} could not accept your order #${orderId}.${why}${refund} - Haraka`;
+    return this.sendSms(phone, message);
+  }
+
   async sendPaymentInitiated(phone: string, orderId: string, amount: number): Promise<boolean> {
     const message = `Please check your phone for the Mobile Money payment prompt to pay ${amount} RWF for order #${orderId}. - Haraka`;
     return this.sendSms(phone, message);

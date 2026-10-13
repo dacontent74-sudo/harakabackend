@@ -101,7 +101,27 @@ export class MerchantsController {
   @Get('me')
   @Auth(MERCHANT_ROLE)
   async getMe(@CurrentUser() user: AuthPrincipal) {
-    return { success: true, data: await this.merchantsService.getMerchantById(user.id.toString()) };
+    return { success: true, data: await this.merchantsService.getOwnRestaurant(user.id) };
+  }
+
+  /** Pause / resume new orders. body: { paused: boolean } */
+  @Put('me/pause')
+  @Auth(MERCHANT_ROLE)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async setPaused(@CurrentUser() user: AuthPrincipal, @Body() body: { paused: boolean }) {
+    return { success: true, data: await this.merchantsService.setPaused(user.id, body?.paused) };
+  }
+
+  /** Mark one of the restaurant's own menu items in stock / out of stock. body: { isAvailable: boolean } */
+  @Put('me/menu/:itemId/availability')
+  @Auth(MERCHANT_ROLE)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async setItemAvailability(
+    @CurrentUser() user: AuthPrincipal,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() body: { isAvailable: boolean },
+  ) {
+    return { success: true, data: await this.merchantsService.setMenuItemAvailability(user.id, itemId, body?.isAvailable) };
   }
 
   @Get('me/withdrawals')

@@ -113,6 +113,19 @@ export class Order {
   @Column({ nullable: true })
   restaurantName: string;
 
+  // Restaurant that owns a food order. Null on orders created before this
+  // column existed; those are matched by restaurantName instead.
+  @Column({ type: 'int', nullable: true })
+  merchantId: number;
+
+  // Why the order was cancelled/rejected (shown to the customer and staff).
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  cancellationReason: string;
+
+  // 'restaurant' | 'staff' | 'customer' - who cancelled the order.
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  cancelledBy: string;
+
   @Column({ nullable: true })
   parcelDescription: string;
 

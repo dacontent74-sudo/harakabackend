@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { PricingService } from '../pricing/pricing.service';
 import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
@@ -212,6 +212,9 @@ export class OrdersService {
       if (!isOpenAt(merchant.hours)) {
         throw new BadRequestException(`${merchant.name} is closed right now. Please order when it opens.`);
       }
+      if (merchant.isPaused) {
+        throw new BadRequestException(`${merchant.name} is not taking orders right now. Please try again later.`);
+      }
 
       if (orderData.items.length > MAX_ITEMS_PER_ORDER) {
         throw new BadRequestException('Too many items in one order');
@@ -263,6 +266,7 @@ export class OrdersService {
 
         restaurant: merchant.name,
         restaurantName: merchant.name,
+        merchantId: merchant.id,
         items,
         pickupLatitude: pickup.lat,
         pickupLongitude: pickup.lng,
@@ -314,12 +318,73 @@ export class OrdersService {
     return this.orderRepository.find({ where: { id: In(clean) }, order: { createdAt: 'DESC' } });
   }
 
-  async getOrdersForRestaurant(restaurantName: string) {
+  /**
+   * A restaurant's food orders. New orders are matched by merchantId; orders
+   * created before that column existed are matched by restaurant name.
+   */
+  async getOrdersForRestaurant(merchantId: number, restaurantName: string) {
     return this.orderRepository.find({
-      where: { restaurantName, orderType: 'food' },
+      where: [
+        { merchantId, orderType: 'food' },
+        { merchantId: IsNull(), restaurantName, orderType: 'food' },
+      ],
       order: { createdAt: 'DESC' },
       take: 500,
     });
+  }
+
+  /** True if this food order belongs to the given restaurant. */
+  static belongsToRestaurant(order: Order, merchantId: number, restaurantName?: string): boolean {
+    if (order.orderType !== 'food') return false;
+    if (order.merchantId != null) return Number(order.merchantId) === Number(merchantId);
+    return !!restaurantName && order.restaurantName === restaurantName;
+  }
+
+  /**
+   * Atomic status change: only succeeds if the order is still in `fromStatus`.
+   * Only the given columns are written, so a concurrent payment update
+   * (paymentStatus, depositId) can never be overwritten by a status change.
+   * Returns false if someone else changed the order first.
+   */
+  async transitionStatus(id: string, fromStatus: string, fields: Partial<Order>): Promise<boolean> {
+    const result = await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set(fields as any)
+      .where('id = :id', { id })
+      .andWhere('status = :fromStatus', { fromStatus })
+      .execute();
+    return !!result.affected;
+  }
+
+  /** Write only the given columns (never the whole row). */
+  async patchOrder(id: string, fields: Partial<Order>) {
+    await this.orderRepository.update({ id }, fields as any);
+  }
+
+  /**
+   * Atomically mark an order paid. Returns false if it was already paid
+   * (so SMS/side effects run exactly once). A food order still waiting for
+   * payment moves to "confirmed" so the restaurant is alerted.
+   */
+  async markPaid(id: string): Promise<boolean> {
+    const result = await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set({ paymentStatus: 'paid' })
+      .where('id = :id', { id })
+      .andWhere('("paymentStatus" IS NULL OR "paymentStatus" <> :paid)', { paid: 'paid' })
+      .execute();
+    if (!result.affected) return false;
+    await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set({ status: 'confirmed', confirmedAt: () => 'COALESCE("confirmedAt", NOW())' } as any)
+      .where('id = :id', { id })
+      .andWhere('status = :pending', { pending: 'pending' })
+      .andWhere('("orderType" IS NULL OR "orderType" <> :parcel)', { parcel: 'parcel' })
+      .execute();
+    return true;
   }
 
   async getOrderById(id: string) {

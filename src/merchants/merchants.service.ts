@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In, DataSource, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { Order } from '../orders/entities/order.entity';
@@ -25,7 +25,7 @@ const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-not-a-real-password', BCRYP
 /** Fields an admin may set on a restaurant. Anything else in the body is ignored. */
 const MERCHANT_FIELDS = [
   'name', 'category', 'rating', 'deliveryTime', 'deliveryFee', 'prepTime', 'image', 'cuisine',
-  'location', 'latitude', 'longitude', 'hours', 'isActive', 'isVerified', 'phone', 'email', 'description',
+  'location', 'latitude', 'longitude', 'hours', 'isActive', 'isVerified', 'isPaused', 'phone', 'email', 'description',
 ] as const;
 
 /** Fields an admin may set on a menu item. */
@@ -130,6 +130,55 @@ export class MerchantsService {
   }
 
   /**
+   * Open/closed state shown in the customer and restaurant apps. Same rule as
+   * order creation: open hours AND not paused by the restaurant.
+   */
+  private openState(merchant: Merchant) {
+    const withinHours = this.isCurrentlyOpen(merchant.hours);
+    const paused = !!merchant.isPaused;
+    return {
+      isOpen: withinHours && !paused,
+      isPaused: paused,
+      withinOpeningHours: withinHours,
+      openingStatus: paused
+        ? 'Not taking orders right now'
+        : withinHours
+          ? `Open until ${this.getClosingTime(merchant.hours)}`
+          : this.getNextOpeningTime(merchant.hours),
+    };
+  }
+
+  /** Restaurant app: own profile including open/closed state. */
+  async getOwnRestaurant(merchantId: number) {
+    const merchant = await this.merchantRepository.findOne({ where: { id: merchantId, isActive: true } });
+    if (!merchant) throw new NotFoundException('Restaurant not found');
+    return {
+      ...(await this.getMerchantById(String(merchantId))),
+      ...this.openState(merchant),
+      locationConfirmed: merchant.locationConfirmed,
+    };
+  }
+
+  /** Restaurant app: pause / resume new orders. */
+  async setPaused(merchantId: number, paused: boolean) {
+    if (typeof paused !== 'boolean') throw new BadRequestException('paused must be true or false');
+    await this.merchantRepository.update({ id: merchantId }, { isPaused: paused });
+    this.logger.log(`⏯️ Restaurant ${merchantId} ${paused ? 'PAUSED' : 'resumed'} new orders`);
+    return this.getOwnRestaurant(merchantId);
+  }
+
+  /** Restaurant app: mark one of its OWN menu items in stock / out of stock. */
+  async setMenuItemAvailability(merchantId: number, itemId: number, isAvailable: boolean) {
+    if (typeof isAvailable !== 'boolean') throw new BadRequestException('isAvailable must be true or false');
+    const item = await this.menuItemRepository.findOne({ where: { id: itemId } });
+    // Same "not found" for missing and foreign items: don't reveal other restaurants' menus.
+    if (!item || item.merchantId !== merchantId) throw new NotFoundException('Menu item not found');
+    await this.menuItemRepository.update({ id: itemId }, { isAvailable });
+    this.logger.log(`🍽️ Restaurant ${merchantId}: item ${itemId} ${isAvailable ? 'available' : 'OUT OF STOCK'}`);
+    return { id: String(itemId), isAvailable };
+  }
+
+  /**
    * 📋 GET ALL MERCHANTS (from database with hardcoded fallback)
    */
   async getAllMerchants() {
@@ -155,10 +204,7 @@ export class MerchantsService {
             ? { lat: parseFloat(merchant.latitude.toString()), lng: parseFloat(merchant.longitude.toString()) }
             : null,
           hours: merchant.hours,
-          isOpen: this.isCurrentlyOpen(merchant.hours),
-          openingStatus: this.isCurrentlyOpen(merchant.hours)
-            ? `Open until ${this.getClosingTime(merchant.hours)}`
-            : this.getNextOpeningTime(merchant.hours),
+          ...this.openState(merchant),
           phone: merchant.phone,
           email: merchant.email,
           description: merchant.description,
@@ -489,15 +535,17 @@ export class MerchantsService {
   /**
    * 📊 Calculate restaurant earnings from completed paid orders
    */
+  /** Delivered + paid food orders of a restaurant (by id; legacy orders by name). */
+  private earningOrdersWhere(merchant: Merchant) {
+    const base = { orderType: 'food', status: 'delivered', paymentStatus: 'paid' };
+    return [
+      { ...base, merchantId: merchant.id },
+      { ...base, merchantId: IsNull(), restaurantName: merchant.name },
+    ];
+  }
+
   async calculateEarnings(merchant: Merchant) {
-    const orders = await this.orderRepository.find({
-      where: {
-        restaurantName: merchant.name,
-        orderType: 'food',
-        status: 'delivered',
-        paymentStatus: 'paid',
-      },
-    });
+    const orders = await this.orderRepository.find({ where: this.earningOrdersWhere(merchant) });
 
     const totalEarnings = orders.reduce((sum, o) => sum + this.foodShare(o), 0);
 
@@ -572,7 +620,7 @@ export class MerchantsService {
   /** Balance computation inside a transaction. */
   private async calculateEarningsWith(manager: any, merchant: Merchant) {
     const orders: Order[] = await manager.getRepository(Order).find({
-      where: { restaurantName: merchant.name, orderType: 'food', status: 'delivered', paymentStatus: 'paid' },
+      where: this.earningOrdersWhere(merchant),
     });
     const total = orders.reduce((sum, o) => sum + this.foodShare(o), 0);
     const withdrawals: Withdrawal[] = await manager.getRepository(Withdrawal).find({

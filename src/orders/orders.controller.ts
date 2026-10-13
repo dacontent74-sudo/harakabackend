@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Put, Logger, HttpCode, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Put, Logger, HttpCode, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
 import { Auth, CurrentUser } from '../auth/decorators/roles.decorator';
@@ -128,7 +128,7 @@ export class OrdersController {
   async getAllOrders(@CurrentUser() user: AuthPrincipal) {
     const orders =
       user.type === 'merchant'
-        ? await this.ordersService.getOrdersForRestaurant(user.name)
+        ? await this.ordersService.getOrdersForRestaurant(user.id, user.name)
         : await this.ordersService.getAllOrders();
     return {
       success: true,
@@ -141,68 +141,108 @@ export class OrdersController {
   @Auth(MERCHANT_ROLE, ...STAFF_WRITE)
   async updateOrderStatus(
     @Param('id') id: string,
-    @Body() body: { status: string; courierName?: string; courierPhone?: string },
+    @Body() body: { status: string; reason?: string; courierName?: string; courierPhone?: string },
     @CurrentUser() user: AuthPrincipal,
   ) {
     try {
+      const newStatus = typeof body?.status === 'string' ? body.status : '';
       const order = await this.ordersService.getOrderById(id);
       if (!order) {
         return {
           success: false,
+          code: 'NOT_FOUND',
           message: 'Order not found',
         };
       }
 
+      const isMerchant = user.type === 'merchant';
+      const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : '';
+
       // SECURITY: restaurants may only move their own food orders through the kitchen states.
-      if (user.type === 'merchant') {
-        if (order.orderType !== 'food' || order.restaurantName !== user.name) {
+      if (isMerchant) {
+        if (!OrdersService.belongsToRestaurant(order, user.id, user.name)) {
           throw new ForbiddenException('This order does not belong to your restaurant');
         }
-        if (!MERCHANT_SETTABLE_STATUSES.includes(body?.status)) {
-          throw new ForbiddenException(`Restaurants cannot set status "${body?.status}"`);
+        if (!MERCHANT_SETTABLE_STATUSES.includes(newStatus)) {
+          throw new ForbiddenException(`Restaurants cannot set status "${newStatus}"`);
         }
-        if (body.status === 'cancelled' && !MERCHANT_CANCELLABLE_FROM.includes(order.status)) {
-          throw new ForbiddenException('Order can no longer be cancelled by the restaurant');
+      }
+
+      // Idempotent: a second tap / second device asking for the same status
+      // changes nothing and sends no duplicate SMS.
+      if (order.status === newStatus) {
+        return { success: true, unchanged: true, message: `Order is already ${newStatus}`, data: order };
+      }
+
+      if (isMerchant) {
+        if (newStatus === 'cancelled') {
+          if (!MERCHANT_CANCELLABLE_FROM.includes(order.status)) {
+            throw new ForbiddenException('Order can no longer be cancelled by the restaurant');
+          }
+          if (reason.length < 3) {
+            throw new BadRequestException('Please give a reason for rejecting this order');
+          }
+        } else if (order.paymentStatus !== 'paid') {
+          // Food is paid in advance by Mobile Money. Never let a kitchen cook
+          // (and a courier deliver) an order nobody has paid for.
+          throw new BadRequestException('This order is not paid yet. Wait for the customer to pay before preparing it.');
         }
       }
 
       // SECURITY: Validate status transition
-      this.statusValidation.validateTransition(order.status, body.status);
+      this.statusValidation.validateTransition(order.status, newStatus);
 
       const oldStatus = order.status;
-      order.status = body.status;
+      const fields: Partial<Order> = { status: newStatus };
 
       // ⏰ SET TIMESTAMPS for order lifecycle tracking
       const now = new Date();
-      switch (body.status) {
+      switch (newStatus) {
         case 'confirmed':
-          if (!order.confirmedAt) order.confirmedAt = now;
+          if (!order.confirmedAt) fields.confirmedAt = now;
           break;
         case 'preparing':
-          if (!order.preparingAt) order.preparingAt = now;
+          if (!order.preparingAt) fields.preparingAt = now;
           break;
         case 'ready':
         case 'ready_for_pickup':
-          if (!order.readyAt) order.readyAt = now;
+          if (!order.readyAt) fields.readyAt = now;
           break;
         case 'assigned':
-          if (!order.assignedAt) order.assignedAt = now;
+          if (!order.assignedAt) fields.assignedAt = now;
           break;
         case 'picked_up':
         case 'in_transit':
-          if (!order.pickedUpAt) order.pickedUpAt = now;
+          if (!order.pickedUpAt) fields.pickedUpAt = now;
           break;
         case 'delivered':
-          if (!order.deliveredAt) order.deliveredAt = now;
+          if (!order.deliveredAt) fields.deliveredAt = now;
           break;
         case 'cancelled':
-          if (!order.cancelledAt) order.cancelledAt = now;
+          if (!order.cancelledAt) fields.cancelledAt = now;
+          fields.cancelledBy = isMerchant ? 'restaurant' : 'staff';
+          if (reason) fields.cancellationReason = reason;
           break;
       }
 
-      await this.ordersService.updateOrder(order);
+      // Atomic: succeeds only if nobody changed the order since we read it
+      // (e.g. another staff phone, the courier, or the customer's payment).
+      const applied = await this.ordersService.transitionStatus(id, oldStatus, fields);
+      if (!applied) {
+        const current = await this.ordersService.getOrderById(id);
+        return {
+          success: false,
+          code: 'STATUS_CHANGED',
+          message: `This order was just updated by someone else (now "${current?.status ?? 'unknown'}"). The list has been refreshed.`,
+          data: current,
+        };
+      }
+      Object.assign(order, fields);
 
-      this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${body.status}`);
+      this.logger.log(`✅ Order ${id} status: ${oldStatus} → ${newStatus}${isMerchant ? ` (restaurant ${user.id})` : ''}`);
+      if (newStatus === 'cancelled' && order.paymentStatus === 'paid') {
+        this.logger.warn(`💸 REFUND REQUIRED: paid order ${id} (${order.total} RWF) was cancelled by ${fields.cancelledBy}: ${reason || 'no reason'}`);
+      }
 
       // 📱 SEND SMS NOTIFICATIONS based on status change
       const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
@@ -275,6 +315,17 @@ export class OrdersController {
           customerPhone,
           order.id.substring(0, 8).toUpperCase(),
           orderType
+        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+
+      // When the restaurant/staff cancels: tell the customer why (and about the refund).
+      if (newStatus === 'cancelled' && customerPhone) {
+        this.twilioSmsService.sendOrderCancelled(
+          customerPhone,
+          order.id.substring(0, 8).toUpperCase(),
+          order.restaurant || order.restaurantName || 'The restaurant',
+          reason,
+          order.paymentStatus === 'paid',
         ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
       }
 

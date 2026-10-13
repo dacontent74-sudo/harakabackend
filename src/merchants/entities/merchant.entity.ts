@@ -48,6 +48,11 @@ export class Merchant {
   @Column({ default: false })
   isVerified: boolean; // Verified restaurant
 
+  // Set by the restaurant app ("Pause new orders"), e.g. kitchen too busy.
+  // While paused the restaurant shows as closed and cannot receive orders.
+  @Column({ default: false })
+  isPaused: boolean;
+
   @Column({ nullable: true })
   phone: string;
 
