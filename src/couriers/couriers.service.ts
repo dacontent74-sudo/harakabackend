@@ -529,4 +529,38 @@ export class CouriersService {
       courier: await this.getCourierProfile(courierId),
     };
   }
+
+  /**
+   * 🗑️ ACCOUNT DELETION (Google Play requirement)
+   * Permanently deletes courier account and all personal data.
+   * Active deliveries are rejected with an error.
+   */
+  async deleteAccount(courierId: number) {
+    const courier = await this.courierRepository.findOne({ where: { id: courierId } });
+    if (!courier) {
+      throw new NotFoundException('Courier not found');
+    }
+
+    // Check for active deliveries
+    const activeJobs = await this.orderRepository.count({
+      where: { courierId, status: In(ACTIVE_COURIER_STATUSES) },
+    });
+    if (activeJobs > 0) {
+      throw new BadRequestException(
+        `Cannot delete account: You have ${activeJobs} active ${activeJobs === 1 ? 'delivery' : 'deliveries'}. ` +
+        'Please complete or cancel them first.'
+      );
+    }
+
+    // Log deletion for compliance
+    this.logger.warn(`🗑️ Courier account deletion: ID ${courierId}, phone ${courier.phoneNumber}, name ${courier.name}`);
+
+    // Permanently delete the account
+    await this.courierRepository.remove(courier);
+
+    return {
+      success: true,
+      message: 'Your account has been permanently deleted. All your personal data has been removed from our systems.',
+    };
+  }
 }

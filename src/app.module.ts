@@ -9,6 +9,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CouriersModule } from './couriers/couriers.module';
 import { AuthModule } from './auth/auth.module';
+import { PrivacyModule } from './privacy/privacy.module';
 import { AppController } from './app.controller';
 import { Order } from './orders/entities/order.entity';
 import { Courier } from './couriers/entities/courier.entity';
@@ -50,6 +51,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     CouriersModule,
     AuthModule,
     NotificationsModule,
+    PrivacyModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

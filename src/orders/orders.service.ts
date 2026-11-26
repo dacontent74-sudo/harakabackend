@@ -245,8 +245,19 @@ export class OrdersService {
         }
         const price = parseFloat(menuItem.price.toString());
         subtotal += price * quantity;
-        return { id: menuItem.id, name: menuItem.name, quantity, price };
+        return { id: menuItem.id, name: menuItem.name, quantity, price, containsAlcohol: menuItem.containsAlcohol };
       });
+
+      // 🔞 Rwanda Law: Age verification for alcohol
+      const hasAlcohol = items.some((item: any) => {
+        const menuItem = byName.get(String(item?.name ?? '').trim().toLowerCase());
+        return menuItem?.containsAlcohol === true;
+      });
+      if (hasAlcohol && !orderData.ageVerified) {
+        throw new BadRequestException(
+          'Age verification required: This order contains alcohol. Customer must confirm they are 18 years or older.'
+        );
+      }
 
       const pickup =
         merchant.latitude != null && merchant.longitude != null

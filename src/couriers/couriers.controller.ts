@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, ParseIntPipe, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe, HttpCode } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CouriersService } from './couriers.service';
 import { Auth, CurrentUser } from '../auth/decorators/roles.decorator';
@@ -91,6 +91,13 @@ export class CouriersController {
   @Auth(COURIER_ROLE)
   async updateCourierProfile(@Body() body: any, @CurrentUser() courier: AuthPrincipal) {
     return this.couriersService.updateCourierProfile(courier.id, body || {});
+  }
+
+  @Delete('account')
+  @HttpCode(200)
+  @Auth(COURIER_ROLE)
+  async deleteAccount(@CurrentUser() courier: AuthPrincipal) {
+    return this.couriersService.deleteAccount(courier.id);
   }
 
   // ------------------------------------------------------------ admin

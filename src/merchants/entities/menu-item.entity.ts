@@ -43,6 +43,9 @@ export class MenuItem {
   @Column({ default: false })
   isSpicy: boolean;
 
+  @Column({ default: false })
+  containsAlcohol: boolean; // 🍺 Rwanda law: must verify age 18+ for alcohol
+
   @Column({ type: 'int', nullable: true })
   preparationTime: number; // minutes
 

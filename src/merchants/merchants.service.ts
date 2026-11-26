@@ -33,7 +33,7 @@ const MERCHANT_FIELDS = [
 /** Fields an admin may set on a menu item. */
 const MENU_ITEM_FIELDS = [
   'name', 'price', 'category', 'image', 'description', 'isAvailable', 'isPopular',
-  'isVegetarian', 'isVegan', 'isSpicy', 'preparationTime', 'allergens',
+  'isVegetarian', 'isVegan', 'isSpicy', 'containsAlcohol', 'preparationTime', 'allergens',
 ] as const;
 
 /** Withdrawal statuses that reserve part of the restaurant balance. */
