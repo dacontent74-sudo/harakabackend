@@ -9,6 +9,7 @@ import { OrdersService } from '../orders/orders.service';
 import { WebhookGuard } from './guards/webhook.guard';
 import { IdempotencyService } from './services/idempotency.service';
 import { TwilioSmsService } from '../notifications/twilio-sms.service';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 import { AdminNotificationService } from '../notifications/admin-notification.service';
 
 /** Amount tolerance (RWF) when comparing PawaPay's amount with the order total. */
@@ -23,6 +24,7 @@ export class PaymentsController {
     private readonly ordersService: OrdersService,
     private readonly idempotencyService: IdempotencyService,
     private readonly twilioSmsService: TwilioSmsService,
+    private readonly whatsappService: WhatsAppService,
     private readonly authService: AuthService,
     private readonly adminNotifications: AdminNotificationService,
   ) {}
@@ -46,11 +48,25 @@ export class PaymentsController {
       this.logger.warn(`💸 REFUND REQUIRED: order ${order.id} was paid (${order.total} RWF) after it was cancelled`);
     }
 
+    // 💬 Send notifications (WhatsApp-first, SMS fallback)
     const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;
     if (customerPhone) {
-      this.twilioSmsService
-        .sendPaymentConfirmed(customerPhone, order.id.substring(0, 8).toUpperCase(), Math.round(Number(order.total) || 0))
-        .catch((err) => this.logger.error(`SMS send failed: ${err.message}`));
+      const shortId = order.id.substring(0, 8).toUpperCase();
+      const total = Math.round(Number(order.total) || 0);
+
+      // Try WhatsApp first (40x cheaper!)
+      this.whatsappService
+        .sendPaymentConfirmed(customerPhone, shortId, total)
+        .then((sent) => {
+          if (!sent) {
+            // WhatsApp failed, fallback to SMS
+            this.logger.log(`💬 WhatsApp failed for ${customerPhone}, falling back to SMS`);
+            return this.twilioSmsService.sendPaymentConfirmed(customerPhone, shortId, total);
+          }
+          this.logger.log(`💬 WhatsApp sent successfully to ${customerPhone}`);
+          return true;
+        })
+        .catch((err) => this.logger.error(`Notification send failed: ${err.message}`));
     }
 
     // 🍽️ Tell the restaurant a paid order is waiting (food orders only).
@@ -59,17 +75,27 @@ export class PaymentsController {
         .getRestaurantPhone(order)
         .then((restaurantPhone) => {
           if (!restaurantPhone) {
-            this.logger.warn(`⚠️ Restaurant of order ${order.id} has no phone number - no "new order" SMS`);
+            this.logger.warn(`⚠️ Restaurant of order ${order.id} has no phone number - no notification sent`);
             return false;
           }
-          return this.twilioSmsService.sendNewOrderToRestaurant(
-            restaurantPhone,
-            order.id.substring(0, 8).toUpperCase(),
-            Array.isArray(order.items) ? order.items : [],
-            Math.round(Number(order.total) || 0),
-          );
+
+          const shortId = order.id.substring(0, 8).toUpperCase();
+          const total = Math.round(Number(order.total) || 0);
+          const items = Array.isArray(order.items) ? order.items : [];
+
+          // Try WhatsApp first
+          return this.whatsappService
+            .sendNewOrderToRestaurant(restaurantPhone, shortId, items, total)
+            .then((sent) => {
+              if (!sent) {
+                // WhatsApp failed, fallback to SMS
+                this.logger.log(`💬 WhatsApp failed for restaurant, falling back to SMS`);
+                return this.twilioSmsService.sendNewOrderToRestaurant(restaurantPhone, shortId, items, total);
+              }
+              return true;
+            });
         })
-        .catch((err) => this.logger.error(`Restaurant SMS failed: ${err.message}`));
+        .catch((err) => this.logger.error(`Restaurant notification failed: ${err.message}`));
     }
 
     // 🔔 Admin alert
