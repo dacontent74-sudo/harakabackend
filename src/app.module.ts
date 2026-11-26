@@ -43,6 +43,14 @@ import { NotificationsModule } from './notifications/notifications.module';
       // in this codebase). Set DB_SYNCHRONIZE=false once you switch to migrations.
       synchronize: process.env.DB_SYNCHRONIZE !== 'false',
       ssl: process.env.DATABASE_URL && process.env.DATABASE_SSL !== 'false' ? { rejectUnauthorized: false } : false,
+      // 🚀 PERFORMANCE: Optimize connection pooling for Render starter plan
+      extra: {
+        max: 5, // Max connections (Render starter has limited RAM)
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000,
+      },
+      // 🚀 PERFORMANCE: Don't load all relations at startup
+      cache: false,
     }),
     PricingModule,
     MerchantsModule,

@@ -13,6 +13,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # 🚀 PERFORMANCE: Increase Node.js memory limit for Render starter plan (512MB RAM)
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=512
       # Secrets: set the values in the Render dashboard (sync: false = not stored in this file)
       - key: DATABASE_URL
         sync: false
@@ -28,6 +31,10 @@ services:
         sync: false
       - key: TWILIO_FROM_NUMBER
         sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: WHATSAPP_ENABLED
+        value: true
       - key: PAWAPAY_API_TOKEN
         sync: false
       - key: WEBHOOK_SECRET
@@ -36,3 +43,10 @@ services:
         sync: false
       - key: EMAIL_PASSWORD
         sync: false
+      # Business configuration
+      - key: FOOD_SERVICE_FEE
+        value: 300
+      - key: PARCEL_SERVICE_FEE
+        value: 100
+      - key: DB_SYNCHRONIZE
+        value: true
