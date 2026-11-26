@@ -7,6 +7,7 @@ import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
 import { TwilioSmsService } from '../notifications/twilio-sms.service';
+import { AdminNotificationService } from '../notifications/admin-notification.service';
 import { Order } from './entities/order.entity';
 
 /** Statuses a restaurant may set on its own food orders. */
@@ -29,6 +30,7 @@ export class OrdersController {
     private readonly ordersService: OrdersService,
     private readonly statusValidation: StatusValidationService,
     private readonly twilioSmsService: TwilioSmsService,
+    private readonly adminNotifications?: AdminNotificationService,
   ) {}
 
   // Create pending order (sender fills their info, system sends link to recipient)
@@ -87,7 +89,12 @@ export class OrdersController {
           isParcel ? 'parcel' : 'food',
           Math.round(createdOrder.total || 0)
         ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      } else {
+        this.logger.warn(`⚠️ Order ${createdOrder.id} has no customer phone - no SMS sent`);
       }
+
+      // 🔔 Admin dashboard notification (live via SSE)
+      void this.adminNotifications?.orderCreated(createdOrder);
     }
 
     return {
@@ -327,6 +334,9 @@ export class OrdersController {
           reason,
           order.paymentStatus === 'paid',
         ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+      }
+      if (newStatus === 'cancelled') {
+        void this.adminNotifications?.orderCancelled(order, reason, fields.cancelledBy || 'staff');
       }
 
       return {

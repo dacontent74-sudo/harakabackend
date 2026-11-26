@@ -9,6 +9,7 @@ import { OrdersService } from '../orders/orders.service';
 import { WebhookGuard } from './guards/webhook.guard';
 import { IdempotencyService } from './services/idempotency.service';
 import { TwilioSmsService } from '../notifications/twilio-sms.service';
+import { AdminNotificationService } from '../notifications/admin-notification.service';
 
 /** Amount tolerance (RWF) when comparing PawaPay's amount with the order total. */
 const AMOUNT_TOLERANCE = 1;
@@ -23,6 +24,7 @@ export class PaymentsController {
     private readonly idempotencyService: IdempotencyService,
     private readonly twilioSmsService: TwilioSmsService,
     private readonly authService: AuthService,
+    private readonly adminNotifications: AdminNotificationService,
   ) {}
 
   /**
@@ -50,6 +52,28 @@ export class PaymentsController {
         .sendPaymentConfirmed(customerPhone, order.id.substring(0, 8).toUpperCase(), Math.round(Number(order.total) || 0))
         .catch((err) => this.logger.error(`SMS send failed: ${err.message}`));
     }
+
+    // 🍽️ Tell the restaurant a paid order is waiting (food orders only).
+    if (order.orderType !== 'parcel' && order.status !== 'cancelled') {
+      this.ordersService
+        .getRestaurantPhone(order)
+        .then((restaurantPhone) => {
+          if (!restaurantPhone) {
+            this.logger.warn(`⚠️ Restaurant of order ${order.id} has no phone number - no "new order" SMS`);
+            return false;
+          }
+          return this.twilioSmsService.sendNewOrderToRestaurant(
+            restaurantPhone,
+            order.id.substring(0, 8).toUpperCase(),
+            Array.isArray(order.items) ? order.items : [],
+            Math.round(Number(order.total) || 0),
+          );
+        })
+        .catch((err) => this.logger.error(`Restaurant SMS failed: ${err.message}`));
+    }
+
+    // 🔔 Admin alert
+    void this.adminNotifications.orderPaid(order);
     return true;
   }
 
@@ -62,6 +86,11 @@ export class PaymentsController {
     const amountOk = !Number.isFinite(paid) || paid + AMOUNT_TOLERANCE >= expected;
     if (!amountOk) {
       this.logger.error(`❌ Deposit ${depositId} amount ${paid} < order total ${expected} - NOT marking paid`);
+      void this.adminNotifications.systemAlert(
+        'Payment amount mismatch',
+        `Deposit ${depositId} paid ${Math.round(paid)} RWF but order #${String(order?.id ?? '').substring(0, 8).toUpperCase()} costs ${expected} RWF. The order was NOT marked paid.`,
+        { level: 'error', data: { source: 'pawapay', depositId, orderId: order?.id ?? null, paid, expected, link: '/orders' } },
+      );
     }
     return { verified: result.status === 'COMPLETED' && amountOk, status: result.status, result };
   }

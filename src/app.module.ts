@@ -17,6 +17,8 @@ import { MenuItem } from './merchants/entities/menu-item.entity';
 import { Withdrawal } from './merchants/entities/withdrawal.entity';
 import { User } from './auth/entities/user.entity';
 import { AuditLog } from './auth/entities/audit-log.entity';
+import { AdminNotification } from './notifications/entities/admin-notification.entity';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -35,7 +37,7 @@ import { AuditLog } from './auth/entities/audit-log.entity';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [Order, Courier, Merchant, MenuItem, Withdrawal, User, AuditLog],
+      entities: [Order, Courier, Merchant, MenuItem, Withdrawal, User, AuditLog, AdminNotification],
       // Schema auto-sync keeps the DB in step with the entities (additive changes only
       // in this codebase). Set DB_SYNCHRONIZE=false once you switch to migrations.
       synchronize: process.env.DB_SYNCHRONIZE !== 'false',
@@ -47,6 +49,7 @@ import { AuditLog } from './auth/entities/audit-log.entity';
     PaymentsModule,
     CouriersModule,
     AuthModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

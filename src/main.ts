@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { lookup } from 'dns/promises';
 import { AppModule } from './app.module';
 import { AuthService } from './auth/auth.service';
 import { getJwtSecret } from './auth/jwt.config';
@@ -16,10 +17,47 @@ function corsOrigins(): string[] | true {
   return list.length ? list : true;
 }
 
+/**
+ * Log which database host we are about to use (never the password) and, if its
+ * name does not resolve, explain the usual Render causes instead of leaving only
+ * TypeORM's bare "getaddrinfo ENOTFOUND" retry loop in the logs.
+ */
+async function checkDatabaseHost(logger: Logger): Promise<void> {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) {
+    logger.error('DATABASE_URL is not set. Set it in Render > haraka-backend > Environment.');
+    return;
+  }
+  let host: string;
+  try {
+    const url = new URL(raw);
+    host = url.hostname;
+    logger.log(`🗄️ Database: ${host}:${url.port || 5432}${url.pathname}`);
+  } catch {
+    logger.error('DATABASE_URL is not a valid postgresql:// URL. Re-copy it from the Render database page.');
+    return;
+  }
+  try {
+    await lookup(host);
+  } catch {
+    const internal = /^dpg-[a-z0-9]+-a$/.test(host);
+    logger.error(
+      `Database host "${host}" does not resolve (DNS ENOTFOUND). ` +
+        (internal
+          ? 'This is a Render *internal* hostname: it only resolves if the database still exists AND is in the same ' +
+            'region/workspace as this service. The database was most likely deleted (free Render databases expire ' +
+            'after 30 days) or lives in another region. Open Render > Databases, then copy the Internal Database URL of an ' +
+            'existing database in the same region into DATABASE_URL (or create a new one).'
+          : 'Check the hostname in DATABASE_URL, or that the database still exists.'),
+    );
+  }
+}
+
 // Haraka Backend API
 // Features: Food ordering, Parcel delivery, Payment integration, Distance-based pricing
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+  await checkDatabaseHost(logger);
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Render (and most PaaS) sit behind one proxy hop: use the real client IP

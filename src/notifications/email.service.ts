@@ -17,6 +17,11 @@ export class EmailService {
     });
   }
 
+  /** True when EMAIL_USER / EMAIL_PASSWORD are set. */
+  isConfigured(): boolean {
+    return !!(process.env.EMAIL_USER && process.env.EMAIL_PASSWORD);
+  }
+
   /**
    * Send email notification when order is ready
    */

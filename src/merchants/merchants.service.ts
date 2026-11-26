@@ -16,6 +16,7 @@ import { MenuItem } from './entities/menu-item.entity';
 import { Withdrawal } from './entities/withdrawal.entity';
 import { PaymentsService } from '../payments/payments.service';
 import { TokenService } from '../auth/token.service';
+import { AdminNotificationService } from '../notifications/admin-notification.service';
 import { assertStrongPassword, BCRYPT_ROUNDS } from '../auth/auth.service';
 import { validateAndNormalizePhone, validateGPSCoordinates } from '../utils/validation';
 import { isOpenAt } from '../utils/opening-hours';
@@ -61,6 +62,7 @@ export class MerchantsService {
     private paymentsService: PaymentsService,
     private tokenService: TokenService,
     private dataSource: DataSource,
+    private adminNotifications: AdminNotificationService,
   ) {}
 
   /**
@@ -615,6 +617,13 @@ export class MerchantsService {
       `💸 Withdrawal #${saved.id} requested by ${merchant.name}: ${fee.amount} RWF ` +
         `(fee ${fee.platformFee}, net ${fee.netAmount}) to ${phone}`,
     );
+    void this.adminNotifications?.withdrawalRequested({
+      id: saved.id,
+      restaurantName: merchant.name,
+      amount: fee.amount,
+      netAmount: fee.netAmount,
+      phoneNumber: phone,
+    });
 
     return {
       success: true,

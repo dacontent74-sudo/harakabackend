@@ -8,7 +8,7 @@ describe('MerchantsService.setMenuItemAvailability', () => {
       findOne: jest.fn(async () => item),
       update: jest.fn(async () => ({ affected: 1 })),
     };
-    const svc = new MerchantsService({} as any, {} as any, menuRepo, {} as any, {} as any, {} as any, {} as any);
+    const svc = new MerchantsService({} as any, {} as any, menuRepo, {} as any, {} as any, {} as any, {} as any, {} as any);
     return { svc, menuRepo };
   }
 

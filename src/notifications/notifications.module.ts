@@ -1,14 +1,30 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmailService } from './email.service';
 import { TwilioSmsService } from './twilio-sms.service';
+import { AdminNotificationService } from './admin-notification.service';
+import { NotificationsController } from './notifications.controller';
+import { AdminNotificationsController } from './admin-notifications.controller';
+import { AdminNotification } from './entities/admin-notification.entity';
+import { ServerErrorAlertFilter } from './server-error-alert.filter';
+import { AuthModule } from '../auth/auth.module';
 
 /**
- * Notifications: Twilio SMS (primary) and Gmail SMTP email (optional).
- * The old WhatsApp (whatsapp-web.js / headless Chrome) and Africa's Talking
- * integrations were removed - they are replaced by Twilio SMS.
+ * Notifications:
+ *   - Twilio SMS (primary) and Gmail SMTP email (optional) for restaurants, couriers and customers.
+ *   - Admin alerts: stored in `admin_notifications` and pushed live to the admin dashboard
+ *     over Server-Sent Events (no SMS/email to admins).
  */
 @Module({
-  providers: [EmailService, TwilioSmsService],
-  exports: [EmailService, TwilioSmsService],
+  imports: [AuthModule, TypeOrmModule.forFeature([AdminNotification])],
+  controllers: [NotificationsController, AdminNotificationsController],
+  providers: [
+    EmailService,
+    TwilioSmsService,
+    AdminNotificationService,
+    { provide: APP_FILTER, useClass: ServerErrorAlertFilter },
+  ],
+  exports: [EmailService, TwilioSmsService, AdminNotificationService],
 })
 export class NotificationsModule {}

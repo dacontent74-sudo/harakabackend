@@ -333,6 +333,16 @@ export class OrdersService {
     });
   }
 
+  /** Phone number of the restaurant behind a food order (for "new order" SMS). */
+  async getRestaurantPhone(order: Pick<Order, 'orderType' | 'merchantId' | 'restaurantName'>): Promise<string | undefined> {
+    if (order?.orderType === 'parcel') return undefined;
+    const merchant = await this.merchantRepository.findOne({
+      where: order.merchantId != null ? { id: Number(order.merchantId) } : { name: order.restaurantName },
+      select: ['id', 'phone'],
+    });
+    return merchant?.phone || undefined;
+  }
+
   /** True if this food order belongs to the given restaurant. */
   static belongsToRestaurant(order: Order, merchantId: number, restaurantName?: string): boolean {
     if (order.orderType !== 'food') return false;
