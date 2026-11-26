@@ -20,6 +20,9 @@ export const FALLBACK_RESTAURANT_LOCATION = { lat: -1.9403, lng: 29.8739 };
 /** Flat service fee added to food orders (RWF). */
 export const FOOD_SERVICE_FEE = Number(process.env.FOOD_SERVICE_FEE ?? 100);
 
+/** Flat service fee added to parcel orders (RWF). Haraka's revenue on parcels. */
+export const PARCEL_SERVICE_FEE = Number(process.env.PARCEL_SERVICE_FEE ?? 100);
+
 const MAX_ITEMS_PER_ORDER = 50;
 const MAX_QTY_PER_ITEM = 50;
 
@@ -283,14 +286,17 @@ export class OrdersService {
       const vehicleType: 'motorcycle' | 'car' = orderData.vehicleType === 'car' ? 'car' : 'motorcycle';
       const distance = this.calculateDistance(pickup.lat, pickup.lng, delivery.lat, delivery.lng);
       const pricing = this.pricingService.calculateDeliveryFee(distance, vehicleType);
-      const total = Math.round(pricing.total);
+      const deliveryFee = Math.round(pricing.total);
+      // 💰 BUSINESS: Add service fee so Haraka earns on parcels (courier gets deliveryFee, Haraka gets service fee)
+      const total = deliveryFee + PARCEL_SERVICE_FEE;
       const receiverPays = orderData.paidBy === 'receiver' || orderData.receiverPaysOnDelivery === true;
 
       order = this.orderRepository.create({
         ...base,
         orderType: 'parcel',
-        // Parcel orders skip the restaurant and go straight to couriers
-        status: 'ready_for_pickup',
+        // 🔒 SECURITY: Parcel starts as 'pending' until payment confirmed
+        // (moved to 'ready_for_pickup' in payments controller after verification)
+        status: receiverPays ? 'ready_for_pickup' : 'pending',
 
         pickupLatitude: pickup.lat,
         pickupLongitude: pickup.lng,
@@ -300,9 +306,9 @@ export class OrdersService {
         parcelDescription: str(orderData.parcelDescription ?? orderData.packageDescription, 500),
         vehicleType,
         distance: Math.round(distance * 100) / 100,
-        deliveryFee: total,
+        deliveryFee,
         total,
-        pricing,
+        pricing: { total, breakdown: { delivery: deliveryFee, service: PARCEL_SERVICE_FEE } },
         receiverPaysOnDelivery: receiverPays,
       });
     }
@@ -386,6 +392,7 @@ export class OrdersService {
       .andWhere('("paymentStatus" IS NULL OR "paymentStatus" <> :paid)', { paid: 'paid' })
       .execute();
     if (!result.affected) return false;
+    // Food orders: pending → confirmed
     await this.orderRepository
       .createQueryBuilder()
       .update(Order)
@@ -393,6 +400,15 @@ export class OrdersService {
       .where('id = :id', { id })
       .andWhere('status = :pending', { pending: 'pending' })
       .andWhere('("orderType" IS NULL OR "orderType" <> :parcel)', { parcel: 'parcel' })
+      .execute();
+    // 🔒 SECURITY: Parcel orders: pending → ready_for_pickup (only after payment!)
+    await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set({ status: 'ready_for_pickup' })
+      .where('id = :id', { id })
+      .andWhere('status = :pending', { pending: 'pending' })
+      .andWhere('"orderType" = :parcel', { parcel: 'parcel' })
       .execute();
     return true;
   }

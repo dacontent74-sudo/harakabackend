@@ -174,14 +174,19 @@ export class CouriersService {
   }
 
   async getAvailableJobs() {
-    // Show jobs that are ready for courier pickup:
-    // - 'ready': Food orders that restaurant marked as ready
-    // - 'ready_for_pickup': Parcel orders that skip restaurant and go directly to courier
-    const jobs = await this.orderRepository.find({
-      where: { status: In(['ready', 'ready_for_pickup']) },
-      order: { createdAt: 'DESC' },
-      take: 20,
-    });
+    // 🔒 SECURITY: Show jobs ready for courier pickup AND paid
+    // - 'ready': Food orders that restaurant marked as ready (must be paid)
+    // - 'ready_for_pickup': Parcel orders (must be paid OR receiver-pays)
+    const jobs = await this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: ['ready', 'ready_for_pickup'] })
+      .andWhere('(order.paymentStatus = :paid OR order.receiverPaysOnDelivery = :receiverPays)', {
+        paid: 'paid',
+        receiverPays: true
+      })
+      .orderBy('order.createdAt', 'DESC')
+      .take(20)
+      .getMany();
 
     return jobs.map(job => {
       // Determine order type: if it has items array, it's food, otherwise parcel
@@ -312,16 +317,26 @@ export class CouriersService {
 
     const previousStatus = order.status;
     const now = new Date();
-    order.status = newStatus;
-    if (newStatus === 'in_transit' && !order.pickedUpAt) order.pickedUpAt = now;
-    if (newStatus === 'delivered' && !order.deliveredAt) order.deliveredAt = now;
 
+    // 🔒 SECURITY: Use atomic field-specific update to prevent race conditions
+    // (TypeORM's save() can overwrite payment status if payment was confirmed meanwhile)
+    const updates: any = { status: newStatus };
+    if (newStatus === 'in_transit' && !order.pickedUpAt) updates.pickedUpAt = now;
+    if (newStatus === 'delivered' && !order.deliveredAt) updates.deliveredAt = now;
     if (location && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))) {
-      order.courierLatitude = Number(location.latitude);
-      order.courierLongitude = Number(location.longitude);
+      updates.courierLatitude = Number(location.latitude);
+      updates.courierLongitude = Number(location.longitude);
     }
 
-    await this.orderRepository.save(order);
+    await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set(updates)
+      .where('id = :id', { id: orderId })
+      .execute();
+
+    // Refresh order to get updated values for notifications
+    Object.assign(order, updates);
 
     // SMS notifications for the customer
     const customerPhone = order.senderPhone || order.recipientPhone || order.customerPhone;

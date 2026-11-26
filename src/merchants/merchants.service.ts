@@ -679,6 +679,20 @@ export class MerchantsService {
     switch (action) {
       case 'payout': {
         if (w.status !== 'requested') throw new BadRequestException(`Withdrawal is already ${w.status}`);
+
+        // 🔒 ATOMIC CLAIM: Prevent double-payout on double-click
+        const claimed = await this.withdrawalRepository
+          .createQueryBuilder()
+          .update(Withdrawal)
+          .set({ status: 'processing', processedBy: staffId, processedAt: new Date() })
+          .where('id = :id', { id })
+          .andWhere('status = :status', { status: 'requested' })
+          .execute();
+
+        if (claimed.affected === 0) {
+          throw new BadRequestException('Withdrawal was already claimed by another request');
+        }
+
         const result = await this.paymentsService.initiatePayout({
           amount: payoutAmountOf(w), // net of the platform fee
           phoneNumber: w.phoneNumber,

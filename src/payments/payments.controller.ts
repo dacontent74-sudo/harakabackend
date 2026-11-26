@@ -83,7 +83,8 @@ export class PaymentsController {
     if (!result.success) return { verified: false, status: undefined as string | undefined, result };
     const expected = Math.round(Number(order?.total ?? order?.pricing?.total ?? 0));
     const paid = Number((result as any).amount);
-    const amountOk = !Number.isFinite(paid) || paid + AMOUNT_TOLERANCE >= expected;
+    // 🔒 SECURITY: Reject if amount is missing/invalid (must be finite AND sufficient)
+    const amountOk = Number.isFinite(paid) && paid + AMOUNT_TOLERANCE >= expected;
     if (!amountOk) {
       this.logger.error(`❌ Deposit ${depositId} amount ${paid} < order total ${expected} - NOT marking paid`);
       void this.adminNotifications.systemAlert(
