@@ -7,6 +7,7 @@ import { CreatePendingOrderDto } from './dto/create-pending-order.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { StatusValidationService } from './services/status-validation.service';
 import { TwilioSmsService } from '../notifications/twilio-sms.service';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 import { AdminNotificationService } from '../notifications/admin-notification.service';
 import { Order } from './entities/order.entity';
 
@@ -30,6 +31,7 @@ export class OrdersController {
     private readonly ordersService: OrdersService,
     private readonly statusValidation: StatusValidationService,
     private readonly twilioSmsService: TwilioSmsService,
+    private readonly whatsappService: WhatsAppService,
     private readonly adminNotifications?: AdminNotificationService,
   ) {}
 
@@ -81,16 +83,28 @@ export class OrdersController {
       const isParcel = createdOrder.orderType === 'parcel' || createdOrder.status === 'ready_for_pickup';
 
       if (customerPhone) {
-        this.logger.log(`📱 Sending "order created" SMS to ${customerPhone}`);
+        this.logger.log(`📱 Sending "order created" notification to ${customerPhone}`);
 
-        this.twilioSmsService.sendOrderCreated(
+        // Try WhatsApp first (97% cheaper!)
+        this.whatsappService.sendPaymentConfirmed(
           customerPhone,
           createdOrder.id.substring(0, 8).toUpperCase(),
-          isParcel ? 'parcel' : 'food',
           Math.round(createdOrder.total || 0)
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        ).then((sent) => {
+          if (!sent) {
+            // WhatsApp failed, fallback to SMS
+            this.logger.log(`💬 WhatsApp failed for ${customerPhone}, falling back to SMS`);
+            return this.twilioSmsService.sendOrderCreated(
+              customerPhone,
+              createdOrder.id.substring(0, 8).toUpperCase(),
+              isParcel ? 'parcel' : 'food',
+              Math.round(createdOrder.total || 0)
+            );
+          }
+          this.logger.log(`💬 WhatsApp sent successfully to ${customerPhone}`);
+        }).catch(err => this.logger.error(`Notification send failed: ${err.message}`));
       } else {
-        this.logger.warn(`⚠️ Order ${createdOrder.id} has no customer phone - no SMS sent`);
+        this.logger.warn(`⚠️ Order ${createdOrder.id} has no customer phone - no notification sent`);
       }
 
       // 🔔 Admin dashboard notification (live via SSE)
@@ -296,33 +310,70 @@ export class OrdersController {
 
       // When restaurant marks order as READY
       if (body.status === 'ready' && customerPhone) {
-        this.logger.log(`📱 Sending "order ready" SMS to ${customerPhone}`);
-        this.twilioSmsService.sendOrderReady(
+        this.logger.log(`📱 Sending "order ready" notification to ${customerPhone}`);
+
+        // Try WhatsApp first (97% cheaper!)
+        this.whatsappService.sendCourierOnTheWay(
           customerPhone,
           order.id.substring(0, 8).toUpperCase(),
-          orderType
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+          'Your courier'
+        ).then((sent) => {
+          if (!sent) {
+            this.logger.log(`💬 WhatsApp failed for ${customerPhone}, falling back to SMS`);
+            return this.twilioSmsService.sendOrderReady(
+              customerPhone,
+              order.id.substring(0, 8).toUpperCase(),
+              orderType
+            );
+          }
+          this.logger.log(`💬 WhatsApp sent successfully to ${customerPhone}`);
+        }).catch(err => this.logger.error(`Notification send failed: ${err.message}`));
       }
 
       // When courier picks up the order
       if (body.status === 'picked_up' && customerPhone && body.courierName) {
-        this.logger.log(`📱 Sending "out for delivery" SMS to ${customerPhone}`);
-        this.twilioSmsService.sendOrderPickedUp(
+        this.logger.log(`📱 Sending "out for delivery" notification to ${customerPhone}`);
+
+        // Try WhatsApp first (97% cheaper!)
+        this.whatsappService.sendOrderPickedUp(
           customerPhone,
           order.id.substring(0, 8).toUpperCase(),
           body.courierName,
           orderType
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        ).then((sent) => {
+          if (!sent) {
+            this.logger.log(`💬 WhatsApp failed for ${customerPhone}, falling back to SMS`);
+            return this.twilioSmsService.sendOrderPickedUp(
+              customerPhone,
+              order.id.substring(0, 8).toUpperCase(),
+              body.courierName,
+              orderType
+            );
+          }
+          this.logger.log(`💬 WhatsApp sent successfully to ${customerPhone}`);
+        }).catch(err => this.logger.error(`Notification send failed: ${err.message}`));
       }
 
       // When order is delivered
       if (body.status === 'delivered' && customerPhone) {
-        this.logger.log(`📱 Sending "order delivered" SMS to ${customerPhone}`);
-        this.twilioSmsService.sendOrderDelivered(
+        this.logger.log(`📱 Sending "order delivered" notification to ${customerPhone}`);
+
+        // Try WhatsApp first (97% cheaper!)
+        this.whatsappService.sendOrderDelivered(
           customerPhone,
           order.id.substring(0, 8).toUpperCase(),
           orderType
-        ).catch(err => this.logger.error(`SMS send failed: ${err.message}`));
+        ).then((sent) => {
+          if (!sent) {
+            this.logger.log(`💬 WhatsApp failed for ${customerPhone}, falling back to SMS`);
+            return this.twilioSmsService.sendOrderDelivered(
+              customerPhone,
+              order.id.substring(0, 8).toUpperCase(),
+              orderType
+            );
+          }
+          this.logger.log(`💬 WhatsApp sent successfully to ${customerPhone}`);
+        }).catch(err => this.logger.error(`Notification send failed: ${err.message}`));
       }
 
       // When the restaurant/staff cancels: tell the customer why (and about the refund).
