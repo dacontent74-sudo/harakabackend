@@ -3,14 +3,16 @@ import { Throttle } from '@nestjs/throttler';
 import { Auth, CurrentUser } from '../auth/decorators/roles.decorator';
 import { AuthPrincipal, STAFF_ADMIN } from '../auth/principal';
 import { TwilioSmsService } from './twilio-sms.service';
+import { WhatsAppService } from './whatsapp.service';
 import { AdminNotificationService } from './admin-notification.service';
 
 /**
  * Notification diagnostics for admins (all routes: super_admin / admin JWT).
- *   GET  /api/v1/notifications/status          Twilio + admin-alert configuration and counters
- *   POST /api/v1/notifications/verify-twilio   re-check Twilio credentials (free, sends nothing)
- *   POST /api/v1/notifications/test-sms        { to, message? } send one real SMS, returns Twilio's error + fix
- *   POST /api/v1/notifications/test-admin      push a test notification to the admin dashboard
+ *   GET  /api/v1/notifications/status            Twilio + admin-alert configuration and counters
+ *   POST /api/v1/notifications/verify-twilio     re-check Twilio credentials (free, sends nothing)
+ *   POST /api/v1/notifications/test-sms          { to, message? } send one real SMS, returns Twilio's error + fix
+ *   POST /api/v1/notifications/test-whatsapp     { to, message? } send one real WhatsApp message
+ *   POST /api/v1/notifications/test-admin        push a test notification to the admin dashboard
  *
  * Admin alerts themselves live in AdminNotificationsController (/api/v1/admin/notifications).
  */
@@ -19,6 +21,7 @@ import { AdminNotificationService } from './admin-notification.service';
 export class NotificationsController {
   constructor(
     private readonly sms: TwilioSmsService,
+    private readonly whatsapp: WhatsAppService,
     private readonly admin: AdminNotificationService,
   ) {}
 
@@ -41,6 +44,32 @@ export class NotificationsController {
     if (!body?.to) throw new BadRequestException('"to" is required (e.g. +250788123456)');
     const message = (body.message || `Haraka SMS test from ${user?.name || 'admin'}. If you got this, SMS works.`).slice(0, 300);
     return this.sms.send(body.to, message);
+  }
+
+  @Post('test-whatsapp')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async testWhatsApp(@Body() body: { to?: string; message?: string }, @CurrentUser() user: AuthPrincipal) {
+    if (!body?.to) throw new BadRequestException('"to" is required (e.g. +250788123456)');
+
+    if (!this.whatsapp.isWhatsAppConfigured()) {
+      return {
+        success: false,
+        error: 'WhatsApp is not configured. Set TWILIO_WHATSAPP_NUMBER in environment variables.',
+        status: this.whatsapp.getStatus()
+      };
+    }
+
+    const message = (body.message || `💬 Haraka WhatsApp test from ${user?.name || 'admin'}. If you got this, WhatsApp works! 🎉`).slice(0, 300);
+    const sent = await this.whatsapp.sendPaymentConfirmed(body.to, 'TEST-001', 1000);
+
+    return {
+      success: sent,
+      message: sent
+        ? `✅ WhatsApp message sent to ${body.to}`
+        : `❌ Failed to send WhatsApp. Check logs for details.`,
+      status: this.whatsapp.getStatus()
+    };
   }
 
   @Post('test-admin')
